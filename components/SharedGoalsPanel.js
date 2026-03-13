@@ -93,10 +93,26 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
   async function createSharedGoal() {
     const filtered = newTasks.filter(t=>t.trim())
     if (!newName.trim()||!newDays||!filtered.length||!selectedFriend) { alert('Lütfen tüm alanları doldur'); return }
-    const { data:g } = await supabase.from('shared_goals').insert({ name:newName.trim(), total_days:parseInt(newDays), start_date:todayStr(), created_by:user.id }).select().single()
-    if (!g) return
-    await supabase.from('shared_tasks').insert(filtered.map((n,i)=>({ goal_id:g.id, name:n, order_index:i })))
-    await supabase.from('shared_goal_members').insert([{ goal_id:g.id, user_id:user.id },{ goal_id:g.id, user_id:selectedFriend.id }])
+    
+    // 1. Hedefi oluştur
+    const { data:g, error:gErr } = await supabase.from('shared_goals').insert({ 
+      name:newName.trim(), total_days:parseInt(newDays), start_date:todayStr(), created_by:user.id 
+    }).select().single()
+    if (gErr || !g) { alert('Hedef oluşturulamadı: ' + (gErr?.message||'bilinmeyen hata')); return }
+    
+    // 2. Görevleri ekle
+    const { error:tErr } = await supabase.from('shared_tasks').insert(
+      filtered.map((n,i)=>({ goal_id:g.id, name:n, order_index:i }))
+    )
+    if (tErr) { alert('Görevler eklenemedi: ' + tErr.message); return }
+    
+    // 3. Üyeleri ekle (önce kendini, sonra arkadaşı)
+    const { error:m1Err } = await supabase.from('shared_goal_members').insert({ goal_id:g.id, user_id:user.id })
+    if (m1Err) { alert('Üye eklenemedi (sen): ' + m1Err.message); return }
+    
+    const { error:m2Err } = await supabase.from('shared_goal_members').insert({ goal_id:g.id, user_id:selectedFriend.id })
+    if (m2Err) { alert('Üye eklenemedi (arkadaş): ' + m2Err.message); return }
+    
     setShowCreate(false); setNewName(''); setNewDays(''); setNewTasks(['']); setSelectedFriend(null)
     await loadAll()
   }
