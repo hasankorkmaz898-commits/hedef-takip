@@ -156,10 +156,17 @@ export default function Home() {
   useEffect(() => { if (user) loadAll() }, [user])
 
   async function signIn() {
-    await supabase.auth.signInWithOAuth({ provider:'google', options:{ redirectTo:`${window.location.origin}/auth/callback` } })
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+        queryParams: { prompt: 'select_account' }
+      }
+    })
   }
   async function signOut() {
-    await supabase.auth.signOut(); setGoals([]); setTasks({}); setLogs({})
+    await supabase.auth.signOut()
+    setGoals([]); setTasks({}); setLogs({})
   }
 
   /* Data */
