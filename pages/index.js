@@ -328,6 +328,7 @@ export default function Home() {
         <ProfilePanel
           user={user}
           onClose={() => setShowProfile(false)}
+          onSignOut={signOut}
           onOpenSharedGoal={(friend) => { setSharedFriend(friend); setShowShared(true) }}
         />
       )}
