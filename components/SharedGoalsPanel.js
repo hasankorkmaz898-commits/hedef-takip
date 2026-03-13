@@ -47,7 +47,7 @@ const S = {
   qCol: { good:'#34d399', mid:'#fbbf24', bad:'#f87171' },
 }
 
-export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
+export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=false }) {
   const [goals,          setGoals]        = useState([])
   const [memberTasks,    setMemberTasks]  = useState({})
   const [logs,           setLogs]         = useState({})
@@ -287,11 +287,20 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
   const tab = gid => activeTab[gid]||'mine'
   const setTab = (gid,t) => setActiveTab(p=>({...p,[gid]:t}))
 
-  return (
+  // Inline modda overlay/panel sarmalayıcısı yok, direkt içerik
+  const Wrapper = ({ children }) => inline ? (
+    <div style={{ paddingBottom: 20 }}>{children}</div>
+  ) : (
     <>
       <div style={S.overlay} onClick={onClose}/>
-      <div style={S.panel}>
+      <div style={S.panel}>{children}</div>
+    </>
+  )
 
+  return (
+    <>
+    <Wrapper>
+      {!inline && (
         <div style={S.hdr}>
           <button onClick={onClose} style={{ width:32,height:32,background:'#1c1f26',border:'1px solid #2e3340',borderRadius:8,color:'#9aa0b0',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center' }}>←</button>
           <div style={{ flex:1 }}>
@@ -300,6 +309,14 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
           </div>
           <button onClick={()=>setShowCreate(true)} style={{ ...S.btn('primary'),padding:'8px 14px',fontSize:12 }}>+ Yeni</button>
         </div>
+      )}
+
+      {inline && (
+        <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 16px 12px' }}>
+          <div style={{ fontSize:13,color:'#5c6475' }}>{goals.length} ortak hedef</div>
+          <button onClick={()=>setShowCreate(true)} style={{ ...S.btn('primary'),padding:'8px 14px',fontSize:12 }}>+ Yeni</button>
+        </div>
+      )}
 
         <div style={{ padding:'14px 16px' }}>
 
@@ -575,7 +592,7 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
             )
           })}
         </div>
-      </div>
+      </Wrapper>
 
       {/* Görev düzenleme */}
       {editingTasks&&(
