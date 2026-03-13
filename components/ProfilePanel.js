@@ -58,7 +58,7 @@ const css = {
   },
 }
 
-export default function ProfilePanel({ user, onClose, onOpenSharedGoal }) {
+export default function ProfilePanel({ user, onClose, onOpenSharedGoal, onSignOut }) {
   const [profile, setProfile] = useState(null)
   const [friends, setFriends] = useState([])
   const [pending, setPending] = useState([])  // gelen istekler
@@ -163,9 +163,15 @@ export default function ProfilePanel({ user, onClose, onOpenSharedGoal }) {
             ? <img src={profile.avatar_url} alt="" style={{ ...css.avatar, objectFit: 'cover' }} />
             : <div style={css.avatar}>{initials(profile?.display_name)}</div>
           }
-          <div>
+          <div style={{ flex: 1 }}>
             <div style={{ fontSize: 15, fontWeight: 600, color: '#e2e6f0', marginBottom: 3 }}>{profile?.display_name || 'Kullanıcı'}</div>
-            <div style={{ fontSize: 12, color: '#5c6475' }}>{user.email}</div>
+            <div style={{ fontSize: 12, color: '#5c6475', marginBottom: 8 }}>{user.email}</div>
+            <button
+              onClick={() => { onClose(); onSignOut() }}
+              style={{ padding:'5px 12px', background:'transparent', border:'1px solid #3a4050', borderRadius:8, color:'#f87171', fontSize:12, fontWeight:500, cursor:'pointer', fontFamily:'inherit' }}
+            >
+              ↩ Hesaptan Çık
+            </button>
           </div>
         </div>
 
