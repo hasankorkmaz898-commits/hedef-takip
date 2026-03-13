@@ -141,6 +141,8 @@ export default function Home() {
   const [tabs,       setTabs]       = useState({})
   const [openHist,   setOpenHist]   = useState({})
   const [noteInputs, setNoteInputs] = useState({})
+  const [mainTab,    setMainTab]    = useState('personal')
+  const [showOnboarding, setShowOnboarding] = useState(false)
 
   const supabase = createClient()
 
@@ -255,9 +257,10 @@ export default function Home() {
   if (!user) return <LoginPage onLogin={signIn} dateLabel={dateLabel} />
 
   return (
-    <div style={{ maxWidth:640, margin:'0 auto', padding:'0 0 80px' }}>
+    <div style={{ maxWidth:640, margin:'0 auto', padding:'0 0 100px' }}>
+
       {/* Header */}
-      <div style={{ padding:'16px 16px 0', display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+      <div style={{ padding:'14px 16px 0', display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:0 }}>
         <div>
           <div style={{ fontSize:20, fontWeight:700, letterSpacing:'-0.02em' }}>
             Hedef<span style={{ color:'var(--accent)' }}>.</span>Takip
@@ -265,9 +268,7 @@ export default function Home() {
           <div style={{ fontSize:12, color:'var(--text3)', marginTop:2 }}>{dateLabel}</div>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-          <button onClick={() => setShowShared(true)} style={{ padding:'7px 12px', background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:99, color:'var(--text2)', fontSize:12, fontWeight:500, cursor:'pointer' }}>
-            🤝 Ortak
-          </button>
+          <button onClick={() => setShowOnboarding(true)} style={{ width:34, height:34, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:'50%', color:'var(--text3)', fontSize:15, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }} title="Nasıl kullanılır?">?</button>
           <div onClick={() => setShowProfile(true)} style={{ cursor:'pointer' }} title="Profilim">
             {user.user_metadata?.avatar_url
               ? <img src={user.user_metadata.avatar_url} alt="" style={{ width:36, height:36, borderRadius:'50%', border:'2px solid var(--border)', display:'block' }} />
@@ -279,46 +280,74 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Goals */}
-      <div style={{ padding:'12px 16px' }}>
-        {goals.length === 0 ? (
-          <div style={{ textAlign:'center', padding:'60px 24px', color:'var(--text3)' }}>
-            <div style={{ fontSize:40, marginBottom:12 }}>🎯</div>
-            <div style={{ fontSize:16, fontWeight:600, color:'var(--text2)', marginBottom:6 }}>Henüz hedef yok</div>
-            <div style={{ fontSize:14 }}>Aşağıdaki butona basarak başla</div>
-          </div>
-        ) : goals.map(goal => (
-          <GoalCard
-            key={goal.id}
-            goal={goal}
-            tasks={tasks[goal.id]||[]}
-            logs={logs[goal.id]||[]}
-            notes={notes}
-            tab={tabs[goal.id]||'tasks'}
-            openHist={openHist}
-            noteInputs={noteInputs}
-            onTabChange={t => setTabs(p=>({...p,[goal.id]:t}))}
-            onToggleHist={k => setOpenHist(p=>({...p,[k]:!p[k]}))}
-            onToggleTask={tid => toggleTask(goal.id, tid)}
-            onSetQuality={(tid,q,ds) => setQuality(goal.id,tid,q,ds)}
-            onRemoveLog={(tid,ds) => removeLog(goal.id,tid,ds)}
-            onSaveNote={ds => saveNote(goal.id,ds)}
-            onNoteChange={(k,v) => setNoteInputs(p=>({...p,[k]:v}))}
-            onEdit={() => { setEditGoal(goal); setShowModal(true) }}
-            onDelete={() => handleDeleteGoal(goal.id)}
-          />
-        ))}
+      {/* Ana Sekmeler */}
+      <div style={{ padding:'12px 16px 0' }}>
+        <div style={{ display:'flex', background:'var(--surface2)', borderRadius:12, padding:4, gap:2 }}>
+          {[['personal','🎯','Hedeflerim'],['shared','🤝','Ortak']].map(([t,icon,label])=>(
+            <button key={t} onClick={()=>setMainTab(t)} style={{ flex:1, padding:'9px 8px', background:mainTab===t?'var(--surface)':`transparent`, border:mainTab===t?'1px solid var(--border)':`1px solid transparent`, borderRadius:9, color:mainTab===t?'var(--text)':`var(--text3)`, fontSize:13, fontWeight:mainTab===t?600:400, cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:6, transition:'all 0.15s' }}>
+              {icon} {label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* FAB */}
-      <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', zIndex:50 }}>
-        <button
-          onClick={() => { setEditGoal(null); setShowModal(true) }}
-          style={{ padding:'13px 28px', background:'var(--accent)', border:'none', borderRadius:99, color:'#fff', fontSize:14, fontWeight:600, boxShadow:'0 4px 24px rgba(99,102,241,0.4)', display:'flex', alignItems:'center', gap:8 }}
-        >
-          + Yeni Hedef
-        </button>
-      </div>
+      {/* Kişisel Hedefler */}
+      {mainTab==='personal' && (
+        <div style={{ padding:'12px 16px' }}>
+          {goals.length === 0 ? (
+            <div style={{ textAlign:'center', padding:'60px 24px', color:'var(--text3)' }}>
+              <div style={{ fontSize:40, marginBottom:12 }}>🎯</div>
+              <div style={{ fontSize:16, fontWeight:600, color:'var(--text2)', marginBottom:6 }}>Henüz hedef yok</div>
+              <div style={{ fontSize:14, marginBottom:20 }}>Aşağıdaki butona basarak başla</div>
+              <button onClick={()=>setShowOnboarding(true)} style={{ padding:'9px 18px', background:'transparent', border:'1px solid var(--border)', borderRadius:99, color:'var(--text3)', fontSize:13, cursor:'pointer', fontFamily:'inherit' }}>? Nasıl çalışır</button>
+            </div>
+          ) : goals.map(goal => (
+            <GoalCard
+              key={goal.id}
+              goal={goal}
+              tasks={tasks[goal.id]||[]}
+              logs={logs[goal.id]||[]}
+              notes={notes}
+              tab={tabs[goal.id]||'tasks'}
+              openHist={openHist}
+              noteInputs={noteInputs}
+              onTabChange={t => setTabs(p=>({...p,[goal.id]:t}))}
+              onToggleHist={k => setOpenHist(p=>({...p,[k]:!p[k]}))}
+              onToggleTask={tid => toggleTask(goal.id, tid)}
+              onSetQuality={(tid,q,ds) => setQuality(goal.id,tid,q,ds)}
+              onRemoveLog={(tid,ds) => removeLog(goal.id,tid,ds)}
+              onSaveNote={ds => saveNote(goal.id,ds)}
+              onNoteChange={(k,v) => setNoteInputs(p=>({...p,[k]:v}))}
+              onEdit={() => { setEditGoal(goal); setShowModal(true) }}
+              onDelete={() => handleDeleteGoal(goal.id)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Ortak Hedefler — inline */}
+      {mainTab==='shared' && (
+        <div style={{ padding:'12px 0 0' }}>
+          <SharedGoalsPanel
+            user={user}
+            initialFriend={sharedFriend}
+            inline={true}
+            onClose={() => { setSharedFriend(null) }}
+          />
+        </div>
+      )}
+
+      {/* FAB — sadece kişisel sekmede */}
+      {mainTab==='personal' && (
+        <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', zIndex:50 }}>
+          <button
+            onClick={() => { setEditGoal(null); setShowModal(true) }}
+            style={{ padding:'13px 28px', background:'var(--accent)', border:'none', borderRadius:99, color:'#fff', fontSize:14, fontWeight:600, boxShadow:'0 4px 24px rgba(99,102,241,0.4)', display:'flex', alignItems:'center', gap:8 }}
+          >
+            + Yeni Hedef
+          </button>
+        </div>
+      )}
 
       {/* Modal */}
       {showModal && (
@@ -336,11 +365,11 @@ export default function Home() {
           user={user}
           onClose={() => setShowProfile(false)}
           onSignOut={signOut}
-          onOpenSharedGoal={(friend) => { setSharedFriend(friend); setShowShared(true) }}
+          onOpenSharedGoal={(friend) => { setSharedFriend(friend); setMainTab('shared') }}
         />
       )}
 
-      {/* Shared Goals Panel */}
+      {/* Shared Goals Panel — overlay modu (profil panelinden açılınca) */}
       {showShared && (
         <SharedGoalsPanel
           user={user}
@@ -348,6 +377,9 @@ export default function Home() {
           onClose={() => { setShowShared(false); setSharedFriend(null) }}
         />
       )}
+
+      {/* Onboarding */}
+      {showOnboarding && <OnboardingModal onClose={() => setShowOnboarding(false)} />}
 
       {/* Toast */}
       {toast && (
@@ -752,5 +784,95 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
         </div>
       </div>
     </div>
+  )
+}
+
+/* ─── Onboarding Modal ────────────────────────────────────────────────────── */
+function OnboardingModal({ onClose }) {
+  const [step, setStep] = useState(0)
+
+  const steps = [
+    {
+      icon: '🎯',
+      title: 'Hedef Oluştur',
+      desc: 'Her hedef için bir süre ve günlük görevler belirlersin. Örneğin "30 günde koşu alışkanlığı" için görevler: sabah koşusu, esneme.',
+      tip: '+ Yeni Hedef butonuna bas ve hedefini oluştur.',
+    },
+    {
+      icon: '✓',
+      title: 'Görevleri İşaretle',
+      desc: 'Her gün görevlerine tıklayarak tamamlandı işareti koy. İşaretin yanında kalite seçebilirsin: İyi / Orta / Kötü.',
+      tip: 'Kalite skoru günün ve genel puanını belirler.',
+    },
+    {
+      icon: '📊',
+      title: 'Puanlar Ne Anlama Gelir?',
+      desc: 'Her görev için: İyi = 100p, Orta = 60p, Kötü = 30p. Günlük puan = o günkü görevlerin ortalaması. Genel ilerleme = tüm günlerin ortalaması.',
+      tip: '🔥 Seri: arka arkaya %50+ skorlu günler.',
+    },
+    {
+      icon: '🤝',
+      title: 'Ortak Hedefler',
+      desc: 'Arkadaşınla birlikte hedef oluşturabilirsiniz. Herkes kendi görevlerini ekler, birbirinizin ilerlemesini anlık olarak görürsünüz.',
+      tip: 'Profilini aç → Arkadaş ekle → Ortak Hedef oluştur.',
+    },
+    {
+      icon: '👤',
+      title: 'Profil ve Arkadaşlar',
+      desc: 'Sağ üstteki avatarına tıklayarak profilini açabilirsin. Kimlik kodunu paylaşarak arkadaşlarını ekleyebilirsin.',
+      tip: 'Kodun HT-XXXXXX formatındadır, paylaşmak yeterli.',
+    },
+  ]
+
+  const s = steps[step]
+  const isLast = step === steps.length - 1
+
+  return (
+    <>
+      <div style={{ position:'fixed', inset:0, background:'rgba(10,12,18,0.85)', backdropFilter:'blur(4px)', zIndex:500 }} onClick={onClose} />
+      <div style={{ position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)', zIndex:501, width:'min(420px,92vw)', background:'#1c1f26', border:'1px solid #2e3340', borderRadius:20, overflow:'hidden' }}>
+
+        {/* Progress bar */}
+        <div style={{ height:3, background:'#242830' }}>
+          <div style={{ height:'100%', width:`${((step+1)/steps.length)*100}%`, background:'#6366f1', transition:'width 0.3s' }} />
+        </div>
+
+        <div style={{ padding:'28px 24px 24px' }}>
+          {/* Icon + step */}
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+            <div style={{ fontSize:40 }}>{s.icon}</div>
+            <div style={{ fontSize:12, color:'#5c6475' }}>{step+1} / {steps.length}</div>
+          </div>
+
+          <div style={{ fontSize:18, fontWeight:700, color:'#e2e6f0', marginBottom:10 }}>{s.title}</div>
+          <div style={{ fontSize:14, color:'#9aa0b0', lineHeight:1.7, marginBottom:16 }}>{s.desc}</div>
+
+          {/* Tip kutusu */}
+          <div style={{ background:'rgba(99,102,241,0.08)', border:'1px solid rgba(99,102,241,0.2)', borderRadius:10, padding:'10px 14px', fontSize:13, color:'#a5b4fc', marginBottom:24 }}>
+            💡 {s.tip}
+          </div>
+
+          {/* Butonlar */}
+          <div style={{ display:'flex', gap:10 }}>
+            {step > 0 && (
+              <button onClick={()=>setStep(p=>p-1)} style={{ padding:'10px 16px', background:'#242830', border:'1px solid #2e3340', borderRadius:10, color:'#9aa0b0', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}>← Geri</button>
+            )}
+            <button
+              onClick={()=>isLast ? onClose() : setStep(p=>p+1)}
+              style={{ flex:1, padding:'11px 16px', background:'#6366f1', border:'none', borderRadius:10, color:'#fff', fontSize:14, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}
+            >
+              {isLast ? '🚀 Başla!' : 'İleri →'}
+            </button>
+          </div>
+
+          {/* Atla */}
+          {!isLast && (
+            <button onClick={onClose} style={{ display:'block', width:'100%', marginTop:12, padding:'8px', background:'transparent', border:'none', color:'#5c6475', fontSize:12, cursor:'pointer', fontFamily:'inherit' }}>
+              Atla
+            </button>
+          )}
+        </div>
+      </div>
+    </>
   )
 }
