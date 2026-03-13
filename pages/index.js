@@ -1,312 +1,317 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '../lib/supabase'
+import ProfilePanel from '../components/ProfilePanel'
+import SharedGoalsPanel from '../components/SharedGoalsPanel'
 
-// ── Quality weights ───────────────────────────────────────────────────────
-const Q = { good: 1.0, mid: 0.6, bad: 0.3 }
-const QSym = { good: '✓', mid: '~', bad: '✗' }
+/* ─── Constants ──────────────────────────────────────────────────────────── */
+const Q      = { good: 1.0, mid: 0.6, bad: 0.3 }
+const QSym   = { good: '✓', mid: '−', bad: '✕' }
 const QLabel = { good: 'İyi', mid: 'Orta', bad: 'Kötü' }
-const DAYS = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi']
+const DAYS   = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
 const MONTHS = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara']
 
 const BADGES = [
-  { id:'first_day',   icon:'🌱', label:'İlk Adım',      color:'rgba(106,255,212,0.2)', border:'rgba(106,255,212,0.5)' },
-  { id:'streak3',     icon:'🔥', label:'3 Günlük Seri',  color:'rgba(255,147,64,0.2)',  border:'rgba(255,147,64,0.5)'  },
-  { id:'streak7',     icon:'⚡', label:'Haftalık Seri',  color:'rgba(255,217,106,0.2)', border:'rgba(255,217,106,0.5)' },
-  { id:'streak14',    icon:'💎', label:'2 Haftalık',     color:'rgba(124,106,255,0.2)', border:'rgba(124,106,255,0.5)' },
-  { id:'perfect_day', icon:'⭐', label:'Mükemmel Gün',   color:'rgba(255,217,106,0.2)', border:'rgba(255,217,106,0.5)' },
-  { id:'half_done',   icon:'🎯', label:'Yarı Yolda',     color:'rgba(124,106,255,0.2)', border:'rgba(124,106,255,0.5)' },
-  { id:'quality_pro', icon:'🏆', label:'Kalite Pro',     color:'rgba(255,107,158,0.2)', border:'rgba(255,107,158,0.5)' },
-  { id:'completed',   icon:'🎉', label:'Tamamlandı!',    color:'rgba(106,255,212,0.2)', border:'rgba(106,255,212,0.5)' },
+  { id:'first_day',   icon:'🌱', label:'İlk Adım'     },
+  { id:'streak3',     icon:'🔥', label:'3 Günlük Seri' },
+  { id:'streak7',     icon:'⚡', label:'Haftalık Seri' },
+  { id:'streak14',    icon:'💎', label:'2 Haftalık'    },
+  { id:'perfect_day', icon:'⭐', label:'Mükemmel Gün'  },
+  { id:'half_done',   icon:'🎯', label:'Yarı Yolda'    },
+  { id:'quality_pro', icon:'🏆', label:'Kalite Pro'    },
+  { id:'completed',   icon:'🎉', label:'Tamamlandı!'   },
 ]
 
-function toDate(d) { return d.toISOString().slice(0,10) }
-function todayStr() { return toDate(new Date()) }
-function addDays(ds, n) { const d = new Date(ds); d.setDate(d.getDate()+n); return toDate(d) }
-function daysElapsed(s) { return Math.max(0, Math.floor((new Date() - new Date(s)) / 86400000)) }
-function daysLeft(s, t) { return Math.max(0, t - daysElapsed(s)) }
+/* ─── Helpers ────────────────────────────────────────────────────────────── */
+const toDate     = d => d.toISOString().slice(0,10)
+const todayStr   = ()  => toDate(new Date())
+const addDays    = (ds, n) => { const d = new Date(ds); d.setDate(d.getDate()+n); return toDate(d) }
+const daysElapsed= s   => Math.max(0, Math.floor((new Date()-new Date(s))/86400000))
+const daysLeft   = (s,t) => Math.max(0, t-daysElapsed(s))
 
-// ── Score helpers (client-side, from loaded data) ─────────────────────────
 function dayScore(tasks, logs, ds) {
   if (!tasks.length) return 0
-  const dayLogs = logs.filter(l => l.log_date === ds)
-  return tasks.reduce((s, t) => {
-    const log = dayLogs.find(l => l.task_id === t.id)
-    return s + (log ? Q[log.quality] : 0)
-  }, 0) / tasks.length
+  const dl = logs.filter(l => l.log_date === ds)
+  return tasks.reduce((s,t) => s + (dl.find(l=>l.task_id===t.id) ? Q[dl.find(l=>l.task_id===t.id).quality] : 0), 0) / tasks.length
 }
 
 function overallScore(tasks, logs, startDate, totalDays) {
-  const e = daysElapsed(startDate)
-  if (!e) return 0
+  const e = daysElapsed(startDate); if (!e) return 0
   let sum = 0
-  for (let i = 0; i < e; i++) {
-    const ds = addDays(startDate, i)
-    sum += dayScore(tasks, logs, ds)
-  }
+  for (let i=0;i<e;i++) sum += dayScore(tasks, logs, addDays(startDate,i))
   return sum / totalDays
 }
 
 function getStreak(tasks, logs, startDate) {
-  let streak = 0
-  const today = todayStr()
-  for (let i = 0; i < 365; i++) {
-    const d = new Date(); d.setDate(d.getDate() - i)
+  let s = 0
+  for (let i=0;i<365;i++) {
+    const d = new Date(); d.setDate(d.getDate()-i)
     const ds = toDate(d)
     if (ds < startDate) break
-    const score = dayScore(tasks, logs, ds)
-    const hasData = logs.some(l => l.log_date === ds)
-    if (i === 0 && score === 0 && !hasData) continue
-    if (score >= 0.5) streak++
-    else break
+    const sc = dayScore(tasks, logs, ds)
+    if (i===0 && sc===0 && !logs.some(l=>l.log_date===ds)) continue
+    if (sc >= 0.5) s++; else break
   }
-  return streak
+  return s
 }
 
 function getEarnedBadges(tasks, logs, startDate, totalDays) {
   const earned = new Set()
-  const e = daysElapsed(startDate)
-  const op = overallScore(tasks, logs, startDate, totalDays)
-  const streak = getStreak(tasks, logs, startDate)
-
-  for (let i = 0; i < e; i++) {
-    const ds = addDays(startDate, i)
-    if (dayScore(tasks, logs, ds) > 0) { earned.add('first_day'); break }
+  const e   = daysElapsed(startDate)
+  const op  = overallScore(tasks, logs, startDate, totalDays)
+  const str = getStreak(tasks, logs, startDate)
+  for (let i=0;i<e;i++) if (dayScore(tasks,logs,addDays(startDate,i))>0) { earned.add('first_day'); break }
+  if (str>=3)  earned.add('streak3')
+  if (str>=7)  earned.add('streak7')
+  if (str>=14) earned.add('streak14')
+  if (op>=0.5) earned.add('half_done')
+  if (op>=1)   earned.add('completed')
+  for (let i=0;i<e;i++) {
+    const ds  = addDays(startDate,i)
+    const dl  = logs.filter(l=>l.log_date===ds)
+    if (tasks.length>0 && tasks.every(t=>dl.find(l=>l.task_id===t.id)?.quality==='good')) { earned.add('perfect_day'); break }
   }
-  if (streak >= 3)  earned.add('streak3')
-  if (streak >= 7)  earned.add('streak7')
-  if (streak >= 14) earned.add('streak14')
-  if (op >= 0.5)    earned.add('half_done')
-  if (op >= 1)      earned.add('completed')
-
-  for (let i = 0; i < e; i++) {
-    const ds = addDays(startDate, i)
-    const dayLogs = logs.filter(l => l.log_date === ds)
-    if (tasks.length > 0 && tasks.every(t => dayLogs.find(l => l.task_id === t.id)?.quality === 'good')) {
-      earned.add('perfect_day'); break
-    }
+  if (logs.length>=10) {
+    const qs = Math.round(logs.reduce((s,l)=>s+(l.quality==='good'?100:l.quality==='mid'?60:30),0)/logs.length)
+    if (qs>=80) earned.add('quality_pro')
   }
-
-  // quality pro: overall quality weighted avg >= 80
-  const total = logs.length
-  if (total >= 10) {
-    const qs = total ? Math.round(logs.reduce((s,l) => s + (l.quality==='good'?100:l.quality==='mid'?60:30), 0) / total) : 0
-    if (qs >= 80) earned.add('quality_pro')
-  }
-
   return earned
 }
 
 function getETA(tasks, logs, startDate, totalDays) {
   const op = overallScore(tasks, logs, startDate, totalDays)
-  if (op >= 1) return { text: "Hedef tamamlandı! 🎉", color: "var(--good)" }
+  if (op>=1) return { text:'Hedef tamamlandı! 🎉', color:'var(--good)' }
   const e = daysElapsed(startDate)
-  if (!e) return { text: "Bugün başladın, devam et!", color: "var(--muted)" }
-  const rate = op / e
-  if (!rate) return { text: "Henüz veri yok", color: "var(--muted)" }
-  const need = Math.ceil((1 - op) / rate)
+  if (!e)   return { text:'Bugün başladın, devam et!', color:'var(--text2)' }
+  const rate = op/e
+  if (!rate) return { text:'Henüz veri yok', color:'var(--text2)' }
+  const need = Math.ceil((1-op)/rate)
   const left = daysLeft(startDate, totalDays)
-  if (need <= left) return { text: `~${need} gün içinde ulaşabilirsin ✓`, color: "var(--good)" }
-  return { text: `Mevcut tempo: ${need} gün gerekiyor (+${need-left} gecikme)`, color: "var(--mid)" }
+  if (need<=left) return { text:`Mevcut tempo ile ~${need} günde tamamlanır`, color:'var(--good)' }
+  return { text:`Mevcut tempo ile ${need} gün gerekiyor (${need-left} gün gecikme)`, color:'var(--mid)' }
 }
 
-// ── Main App ──────────────────────────────────────────────────────────────
+/* ─── Shared styles ──────────────────────────────────────────────────────── */
+const css = {
+  card: {
+    background:'var(--surface)', border:'1px solid var(--border)',
+    borderRadius:'var(--r-xl)', padding:'20px', marginBottom:16,
+  },
+  label: {
+    fontSize:11, fontWeight:600, textTransform:'uppercase',
+    letterSpacing:'0.08em', color:'var(--text3)',
+  },
+  input: {
+    width:'100%', background:'var(--surface2)', border:'1px solid var(--border)',
+    borderRadius:'var(--r-md)', padding:'11px 14px', color:'var(--text)',
+    fontSize:15, outline:'none', WebkitAppearance:'none',
+  },
+  btn: (variant='primary') => ({
+    padding: variant==='primary' ? '12px 20px' : '10px 16px',
+    background: variant==='primary' ? 'var(--accent)' : 'var(--surface2)',
+    border: variant==='primary' ? 'none' : '1px solid var(--border)',
+    borderRadius:'var(--r-md)', color: variant==='primary' ? '#fff' : 'var(--text2)',
+    fontSize:14, fontWeight:600, cursor:'pointer',
+  }),
+  iconBtn: {
+    width:36, height:36, background:'var(--surface2)', border:'1px solid var(--border)',
+    borderRadius:'var(--r-sm)', color:'var(--text3)', cursor:'pointer',
+    display:'flex', alignItems:'center', justifyContent:'center', fontSize:15,
+  },
+  tab: (active) => ({
+    flex:1, padding:'9px 8px', background: active?'var(--surface)':'transparent',
+    border:'none', borderRadius:'var(--r-sm)', color: active?'var(--text)':'var(--text3)',
+    fontSize:13, fontWeight: active?600:400, cursor:'pointer', transition:'all 0.15s',
+  }),
+}
+
+/* ─── Main App ───────────────────────────────────────────────────────────── */
 export default function Home() {
-  const [user, setUser] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [goals, setGoals] = useState([])
-  const [tasks, setTasks] = useState({})   // goalId → tasks[]
-  const [logs, setLogs] = useState({})     // goalId → logs[]
-  const [notes, setNotes] = useState({})   // goalId:date → note
-  const [toast, setToast] = useState('')
-  const [showModal, setShowModal] = useState(false)
-  const [editGoal, setEditGoal] = useState(null)
-  const [tabs, setTabs] = useState({})
-  const [openHistory, setOpenHistory] = useState({})
+  const [user,       setUser]       = useState(null)
+  const [loading,    setLoading]    = useState(true)
+  const [goals,      setGoals]      = useState([])
+  const [tasks,      setTasks]      = useState({})
+  const [logs,       setLogs]       = useState({})
+  const [notes,      setNotes]      = useState({})
+  const [toast,         setToast]         = useState('')
+  const [showModal,     setShowModal]     = useState(false)
+  const [editGoal,      setEditGoal]      = useState(null)
+  const [showProfile,   setShowProfile]   = useState(false)
+  const [showShared,    setShowShared]    = useState(false)
+  const [sharedFriend,  setSharedFriend]  = useState(null)
+  const [tabs,       setTabs]       = useState({})
+  const [openHist,   setOpenHist]   = useState({})
   const [noteInputs, setNoteInputs] = useState({})
+
   const supabase = createClient()
 
-  // ── Auth ────────────────────────────────────────────────────────────────
+  /* Auth */
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-      setLoading(false)
+      setUser(session?.user ?? null); setLoading(false)
     })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
-      setUser(session?.user ?? null)
-    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setUser(s?.user ?? null))
     return () => subscription.unsubscribe()
   }, [])
 
   useEffect(() => { if (user) loadAll() }, [user])
 
-  async function signInWithGoogle() {
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: `${window.location.origin}/auth/callback` }
-    })
+  async function signIn() {
+    await supabase.auth.signInWithOAuth({ provider:'google', options:{ redirectTo:`${window.location.origin}/auth/callback` } })
   }
-
   async function signOut() {
-    await supabase.auth.signOut()
-    setGoals([]); setTasks({}); setLogs({})
+    await supabase.auth.signOut(); setGoals([]); setTasks({}); setLogs({})
   }
 
-  // ── Data loading ─────────────────────────────────────────────────────────
+  /* Data */
   async function loadAll() {
-    const { data: goalsData } = await supabase.from('goals').select('*').order('created_at')
-    if (!goalsData) return
-    setGoals(goalsData)
-
-    const tasksMap = {}, logsMap = {}, notesMap = {}
-    for (const g of goalsData) {
-      const { data: t } = await supabase.from('tasks').select('*').eq('goal_id', g.id).order('order_index')
-      tasksMap[g.id] = t || []
-
-      const { data: l } = await supabase.from('daily_logs').select('*').in('task_id', (t||[]).map(x=>x.id))
-      logsMap[g.id] = l || []
-
-      const { data: n } = await supabase.from('daily_notes').select('*').eq('goal_id', g.id)
-      ;(n||[]).forEach(note => { notesMap[`${g.id}:${note.note_date}`] = note.note })
+    const { data: gd } = await supabase.from('goals').select('*').order('created_at')
+    if (!gd) return
+    setGoals(gd)
+    const tm={}, lm={}, nm={}
+    for (const g of gd) {
+      const { data:t } = await supabase.from('tasks').select('*').eq('goal_id',g.id).order('order_index')
+      tm[g.id] = t||[]
+      const { data:l } = await supabase.from('daily_logs').select('*').in('task_id',(t||[]).map(x=>x.id))
+      lm[g.id] = l||[]
+      const { data:n } = await supabase.from('daily_notes').select('*').eq('goal_id',g.id)
+      ;(n||[]).forEach(x => { nm[`${g.id}:${x.note_date}`] = x.note })
     }
-    setTasks(tasksMap)
-    setLogs(logsMap)
-    setNotes(notesMap)
+    setTasks(tm); setLogs(lm); setNotes(nm)
   }
 
-  function showToast(msg) {
-    setToast(msg)
-    setTimeout(() => setToast(''), 3000)
-  }
+  function showToast(msg) { setToast(msg); setTimeout(()=>setToast(''),3000) }
 
-  // ── Goal CRUD ─────────────────────────────────────────────────────────────
+  /* Goal CRUD */
   async function handleSaveGoal(name, totalDays, taskNames) {
     if (editGoal) {
-      await supabase.from('goals').update({ name, total_days: totalDays }).eq('id', editGoal.id)
-      // update tasks: delete old, insert new
-      await supabase.from('tasks').delete().eq('goal_id', editGoal.id)
-      await supabase.from('tasks').insert(taskNames.map((n,i) => ({ goal_id: editGoal.id, name: n, order_index: i })))
+      await supabase.from('goals').update({ name, total_days:totalDays }).eq('id',editGoal.id)
+      await supabase.from('tasks').delete().eq('goal_id',editGoal.id)
+      await supabase.from('tasks').insert(taskNames.map((n,i)=>({ goal_id:editGoal.id, name:n, order_index:i })))
     } else {
-      const { data: g } = await supabase.from('goals').insert({ name, total_days: totalDays, start_date: todayStr(), user_id: user.id }).select().single()
-      if (g) await supabase.from('tasks').insert(taskNames.map((n,i) => ({ goal_id: g.id, name: n, order_index: i })))
+      const { data:g } = await supabase.from('goals').insert({ name, total_days:totalDays, start_date:todayStr(), user_id:user.id }).select().single()
+      if (g) await supabase.from('tasks').insert(taskNames.map((n,i)=>({ goal_id:g.id, name:n, order_index:i })))
     }
-    setShowModal(false); setEditGoal(null)
-    await loadAll()
+    setShowModal(false); setEditGoal(null); await loadAll()
   }
 
   async function handleDeleteGoal(goalId) {
     if (!confirm('Bu hedef silinsin mi?')) return
-    await supabase.from('goals').delete().eq('id', goalId)
-    await loadAll()
+    await supabase.from('goals').delete().eq('id',goalId); await loadAll()
   }
 
-  // ── Log helpers ───────────────────────────────────────────────────────────
+  /* Logs */
   async function toggleTask(goalId, taskId) {
     const ds = todayStr()
-    const existing = (logs[goalId]||[]).find(l => l.task_id === taskId && l.log_date === ds)
-    if (existing) {
-      await supabase.from('daily_logs').delete().eq('id', existing.id)
-    } else {
-      await supabase.from('daily_logs').insert({ task_id: taskId, log_date: ds, quality: 'good', user_id: user.id })
-    }
+    const ex = (logs[goalId]||[]).find(l=>l.task_id===taskId&&l.log_date===ds)
+    if (ex) await supabase.from('daily_logs').delete().eq('id',ex.id)
+    else    await supabase.from('daily_logs').insert({ task_id:taskId, log_date:ds, quality:'good', user_id:user.id })
     await reloadLogs(goalId)
   }
 
-  async function setQuality(goalId, taskId, quality, ds = todayStr()) {
-    const existing = (logs[goalId]||[]).find(l => l.task_id === taskId && l.log_date === ds)
-    if (existing) {
-      await supabase.from('daily_logs').update({ quality }).eq('id', existing.id)
-    } else {
-      await supabase.from('daily_logs').insert({ task_id: taskId, log_date: ds, quality, user_id: user.id })
-    }
+  async function setQuality(goalId, taskId, quality, ds=todayStr()) {
+    const ex = (logs[goalId]||[]).find(l=>l.task_id===taskId&&l.log_date===ds)
+    if (ex) await supabase.from('daily_logs').update({ quality }).eq('id',ex.id)
+    else    await supabase.from('daily_logs').insert({ task_id:taskId, log_date:ds, quality, user_id:user.id })
     await reloadLogs(goalId)
   }
 
   async function removeLog(goalId, taskId, ds) {
-    const existing = (logs[goalId]||[]).find(l => l.task_id === taskId && l.log_date === ds)
-    if (existing) await supabase.from('daily_logs').delete().eq('id', existing.id)
+    const ex = (logs[goalId]||[]).find(l=>l.task_id===taskId&&l.log_date===ds)
+    if (ex) await supabase.from('daily_logs').delete().eq('id',ex.id)
     await reloadLogs(goalId)
   }
 
   async function reloadLogs(goalId) {
-    const goalTasks = tasks[goalId] || []
-    const { data: l } = await supabase.from('daily_logs').select('*').in('task_id', goalTasks.map(x=>x.id))
-    setLogs(prev => ({ ...prev, [goalId]: l || [] }))
+    const { data:l } = await supabase.from('daily_logs').select('*').in('task_id',(tasks[goalId]||[]).map(x=>x.id))
+    setLogs(p=>({...p,[goalId]:l||[]}))
   }
 
   async function saveNote(goalId, ds) {
     const key = `${goalId}:${ds}`
     const note = noteInputs[key] ?? notes[key] ?? ''
-    const existing = await supabase.from('daily_notes').select('id').eq('goal_id', goalId).eq('note_date', ds).single()
-    if (existing.data) {
-      await supabase.from('daily_notes').update({ note }).eq('id', existing.data.id)
-    } else {
-      await supabase.from('daily_notes').insert({ goal_id: goalId, note_date: ds, note, user_id: user.id })
-    }
-    setNotes(prev => ({ ...prev, [key]: note }))
-    showToast('📝 Not kaydedildi!')
+    const { data:ex } = await supabase.from('daily_notes').select('id').eq('goal_id',goalId).eq('note_date',ds).single()
+    if (ex) await supabase.from('daily_notes').update({ note }).eq('id',ex.id)
+    else    await supabase.from('daily_notes').insert({ goal_id:goalId, note_date:ds, note, user_id:user.id })
+    setNotes(p=>({...p,[key]:note})); showToast('Not kaydedildi')
   }
 
-  // ── Render helpers ────────────────────────────────────────────────────────
+  /* Date */
   const now = new Date()
   const dateLabel = `${DAYS[now.getDay()]}, ${now.getDate()} ${MONTHS[now.getMonth()]} ${now.getFullYear()}`
 
   if (loading) return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', color:'var(--muted)', fontFamily:'DM Mono,monospace', position:'relative', zIndex:1 }}>
+    <div style={{ display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',color:'var(--text3)',fontSize:14 }}>
       Yükleniyor...
     </div>
   )
 
-  if (!user) return <LoginPage onLogin={signInWithGoogle} dateLabel={dateLabel} />
+  if (!user) return <LoginPage onLogin={signIn} dateLabel={dateLabel} />
 
   return (
-    <div style={{ position:'relative', zIndex:1, maxWidth:960, margin:'0 auto', padding:'40px 24px' }}>
+    <div style={{ maxWidth:640, margin:'0 auto', padding:'0 0 80px' }}>
       {/* Header */}
-      <div style={{ display:'flex', alignItems:'flex-end', justifyContent:'space-between', marginBottom:48 }}>
-        <div style={{ fontFamily:'Syne,sans-serif', fontWeight:800, fontSize:28, letterSpacing:-1 }}>
-          hedef<span style={{ color:'var(--accent)' }}>.</span>takip
+      <div style={{ padding:'16px 16px 0', display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+        <div>
+          <div style={{ fontSize:20, fontWeight:700, letterSpacing:'-0.02em' }}>
+            Hedef<span style={{ color:'var(--accent)' }}>.</span>Takip
+          </div>
+          <div style={{ fontSize:12, color:'var(--text3)', marginTop:2 }}>{dateLabel}</div>
         </div>
-        <div style={{ display:'flex', gap:12, alignItems:'center' }}>
-          <div style={{ fontSize:11, color:'var(--muted)', textTransform:'uppercase', letterSpacing:2, padding:'6px 14px', border:'1px solid var(--border)', borderRadius:20 }}>{dateLabel}</div>
-          <button onClick={signOut} style={{ fontSize:11, background:'transparent', border:'1px solid var(--border)', borderRadius:20, color:'var(--muted)', padding:'6px 14px', cursor:'pointer', fontFamily:'DM Mono,monospace', textTransform:'uppercase', letterSpacing:1 }}>Çıkış</button>
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          <button onClick={() => setShowShared(true)} style={{ padding:'7px 12px', background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:99, color:'var(--text2)', fontSize:12, fontWeight:500, cursor:'pointer' }}>
+            🤝 Ortak
+          </button>
+          <div onClick={() => setShowProfile(true)} style={{ cursor:'pointer' }} title="Profilim">
+            {user.user_metadata?.avatar_url
+              ? <img src={user.user_metadata.avatar_url} alt="" style={{ width:36, height:36, borderRadius:'50%', border:'2px solid var(--border)', display:'block' }} />
+              : <div style={{ width:36, height:36, borderRadius:'50%', background:'var(--accent)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:700, color:'#fff' }}>
+                  {(user.user_metadata?.full_name||user.email||'?')[0].toUpperCase()}
+                </div>
+            }
+          </div>
         </div>
       </div>
 
-      {/* Add Goal Button */}
-      <button onClick={() => { setEditGoal(null); setShowModal(true) }} style={{ width:'100%', padding:16, background:'transparent', border:'1.5px dashed var(--border)', borderRadius:16, color:'var(--muted)', fontFamily:'DM Mono,monospace', fontSize:13, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8, marginBottom:32, letterSpacing:1, textTransform:'uppercase' }}
-        onMouseOver={e => { e.currentTarget.style.borderColor='var(--accent)'; e.currentTarget.style.color='var(--accent)' }}
-        onMouseOut={e => { e.currentTarget.style.borderColor='var(--border)'; e.currentTarget.style.color='var(--muted)' }}>
-        + yeni hedef ekle
-      </button>
-
       {/* Goals */}
-      {goals.length === 0 ? (
-        <div style={{ textAlign:'center', padding:'60px 24px', color:'var(--muted)' }}>
-          <div style={{ fontSize:48, marginBottom:16, opacity:0.4 }}>🎯</div>
-          <div style={{ fontFamily:'Syne,sans-serif', fontWeight:700, fontSize:18, color:'var(--text)', marginBottom:8 }}>Henüz hedef yok</div>
-          <div style={{ fontSize:13 }}>İlk hedefini ekleyerek başla</div>
-        </div>
-      ) : goals.map(goal => (
-        <GoalCard
-          key={goal.id}
-          goal={goal}
-          tasks={tasks[goal.id] || []}
-          logs={logs[goal.id] || []}
-          notes={notes}
-          tab={tabs[goal.id] || 'tasks'}
-          openHistory={openHistory}
-          noteInputs={noteInputs}
-          onTabChange={(t) => setTabs(p => ({...p, [goal.id]: t}))}
-          onToggleHistory={(k) => setOpenHistory(p => ({...p, [k]: !p[k]}))}
-          onToggleTask={(tid) => toggleTask(goal.id, tid)}
-          onSetQuality={(tid, q, ds) => setQuality(goal.id, tid, q, ds)}
-          onRemoveLog={(tid, ds) => removeLog(goal.id, tid, ds)}
-          onSaveNote={(ds) => saveNote(goal.id, ds)}
-          onNoteChange={(k, v) => setNoteInputs(p => ({...p, [k]: v}))}
-          onEdit={() => { setEditGoal(goal); setShowModal(true) }}
-          onDelete={() => handleDeleteGoal(goal.id)}
-          userId={user.id}
-        />
-      ))}
+      <div style={{ padding:'12px 16px' }}>
+        {goals.length === 0 ? (
+          <div style={{ textAlign:'center', padding:'60px 24px', color:'var(--text3)' }}>
+            <div style={{ fontSize:40, marginBottom:12 }}>🎯</div>
+            <div style={{ fontSize:16, fontWeight:600, color:'var(--text2)', marginBottom:6 }}>Henüz hedef yok</div>
+            <div style={{ fontSize:14 }}>Aşağıdaki butona basarak başla</div>
+          </div>
+        ) : goals.map(goal => (
+          <GoalCard
+            key={goal.id}
+            goal={goal}
+            tasks={tasks[goal.id]||[]}
+            logs={logs[goal.id]||[]}
+            notes={notes}
+            tab={tabs[goal.id]||'tasks'}
+            openHist={openHist}
+            noteInputs={noteInputs}
+            onTabChange={t => setTabs(p=>({...p,[goal.id]:t}))}
+            onToggleHist={k => setOpenHist(p=>({...p,[k]:!p[k]}))}
+            onToggleTask={tid => toggleTask(goal.id, tid)}
+            onSetQuality={(tid,q,ds) => setQuality(goal.id,tid,q,ds)}
+            onRemoveLog={(tid,ds) => removeLog(goal.id,tid,ds)}
+            onSaveNote={ds => saveNote(goal.id,ds)}
+            onNoteChange={(k,v) => setNoteInputs(p=>({...p,[k]:v}))}
+            onEdit={() => { setEditGoal(goal); setShowModal(true) }}
+            onDelete={() => handleDeleteGoal(goal.id)}
+          />
+        ))}
+      </div>
+
+      {/* FAB */}
+      <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', zIndex:50 }}>
+        <button
+          onClick={() => { setEditGoal(null); setShowModal(true) }}
+          style={{ padding:'13px 28px', background:'var(--accent)', border:'none', borderRadius:99, color:'#fff', fontSize:14, fontWeight:600, boxShadow:'0 4px 24px rgba(99,102,241,0.4)', display:'flex', alignItems:'center', gap:8 }}
+        >
+          + Yeni Hedef
+        </button>
+      </div>
 
       {/* Modal */}
       {showModal && (
@@ -318,215 +323,226 @@ export default function Home() {
         />
       )}
 
-      {/* Toast */}
-      <div style={{ position:'fixed', bottom:32, left:'50%', transform:`translateX(-50%) translateY(${toast?0:20}px)`, background:'var(--surface)', border:'1px solid var(--accent)', borderRadius:12, padding:'12px 20px', fontSize:13, color:'var(--text)', opacity:toast?1:0, transition:'all 0.3s', zIndex:999, pointerEvents:'none', whiteSpace:'nowrap' }}>
-        {toast}
-      </div>
-    </div>
-  )
-}
-
-// ── Login Page ────────────────────────────────────────────────────────────
-function LoginPage({ onLogin, dateLabel }) {
-  return (
-    <div style={{ position:'relative', zIndex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'100vh', padding:24 }}>
-      <div style={{ fontFamily:'Syne,sans-serif', fontWeight:800, fontSize:36, letterSpacing:-1, marginBottom:8 }}>
-        hedef<span style={{ color:'var(--accent)' }}>.</span>takip
-      </div>
-      <div style={{ fontSize:13, color:'var(--muted)', marginBottom:48 }}>{dateLabel}</div>
-
-      <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:20, padding:40, width:'100%', maxWidth:400, textAlign:'center' }}>
-        <div style={{ fontSize:48, marginBottom:16 }}>🎯</div>
-        <div style={{ fontFamily:'Syne,sans-serif', fontWeight:700, fontSize:20, marginBottom:8 }}>Hoş Geldin</div>
-        <div style={{ fontSize:13, color:'var(--muted)', marginBottom:32, lineHeight:1.6 }}>
-          Hedeflerini takip etmeye başlamak için giriş yap.
-        </div>
-        <button onClick={onLogin} style={{ width:'100%', padding:'14px 24px', background:'white', border:'none', borderRadius:12, color:'#1a1a2e', fontFamily:'Syne,sans-serif', fontWeight:700, fontSize:15, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}>
-          <svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-          Google ile Giriş Yap
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// ── Goal Card ─────────────────────────────────────────────────────────────
-function GoalCard({ goal, tasks, logs, notes, tab, openHistory, noteInputs, onTabChange, onToggleHistory, onToggleTask, onSetQuality, onRemoveLog, onSaveNote, onNoteChange, onEdit, onDelete }) {
-  const today = todayStr()
-  const op    = Math.round(overallScore(tasks, logs, goal.start_date, goal.total_days) * 100)
-  const tp    = Math.round(dayScore(tasks, logs, today) * 100)
-  const streak= getStreak(tasks, logs, goal.start_date)
-  const elapsed   = daysElapsed(goal.start_date)
-  const remaining = daysLeft(goal.start_date, goal.total_days)
-  const eta   = getETA(tasks, logs, goal.start_date, goal.total_days)
-  const earned= getEarnedBadges(tasks, logs, goal.start_date, goal.total_days)
-
-  // avg daily
-  let avgSum = 0, avgCnt = 0
-  for (let i = 0; i < elapsed; i++) {
-    const ds = addDays(goal.start_date, i)
-    if (logs.some(l => l.log_date === ds)) { avgSum += dayScore(tasks, logs, ds); avgCnt++ }
-  }
-  const ap = avgCnt ? Math.round((avgSum/avgCnt)*100) : 0
-
-  // quality score
-  const qs = logs.length ? Math.round(logs.reduce((s,l) => s+(l.quality==='good'?100:l.quality==='mid'?60:30),0)/logs.length) : 0
-  const qColor = qs>=70?'var(--good)':qs>=40?'var(--mid)':'var(--bad)'
-  const opColor= op>=70?'var(--good)':op>=35?'var(--accent)':'var(--accent2)'
-  const grad   = op>=80?'linear-gradient(90deg,var(--good),#3fffc4)':op>=40?'linear-gradient(90deg,var(--accent),#b46aff)':'linear-gradient(90deg,var(--accent2),#ff9e6a)'
-
-  // quality breakdown
-  const qb = { good: logs.filter(l=>l.quality==='good').length, mid: logs.filter(l=>l.quality==='mid').length, bad: logs.filter(l=>l.quality==='bad').length }
-  const qTotal = qb.good+qb.mid+qb.bad
-
-  const todayLogs = logs.filter(l => l.log_date === today)
-
-  // chart: last 21 days
-  const chartDays = []
-  for (let i = 20; i >= 0; i--) {
-    const d = new Date(); d.setDate(d.getDate()-i)
-    const ds = toDate(d)
-    const dayLogs = logs.filter(l => l.log_date === ds)
-    const c = { good: dayLogs.filter(l=>l.quality==='good').length, mid: dayLogs.filter(l=>l.quality==='mid').length, bad: dayLogs.filter(l=>l.quality==='bad').length }
-    chartDays.push({ ds, c, isToday: ds===today, label: i===0?'bugün':(i%4===0?(d.getDate()+'/'+(d.getMonth()+1)):'') })
-  }
-
-  // history: last 14 days
-  const histDays = []
-  for (let i = 1; i <= 14; i++) {
-    const d = new Date(); d.setDate(d.getDate()-i)
-    const ds = toDate(d)
-    if (ds < goal.start_date) break
-    histDays.push({ ds, d })
-  }
-
-  const n = tasks.length || 1
-
-  const s = { // inline styles shorthand
-    card: { background:'var(--surface)', border:'1px solid var(--border)', borderRadius:20, padding:28, marginBottom:24 },
-    sectionLabel: { fontSize:10, textTransform:'uppercase', letterSpacing:2, color:'var(--muted)', marginBottom:10, display:'flex', justifyContent:'space-between', alignItems:'center' },
-    statBox: (color) => ({ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 8px', textAlign:'center', flex:1 }),
-    iconBtn: { width:32, height:32, background:'transparent', border:'1px solid var(--border)', borderRadius:8, color:'var(--muted)', cursor:'pointer', fontSize:14, display:'flex', alignItems:'center', justifyContent:'center' },
-    tabBtn: (active) => ({ flex:1, padding:8, background: active?'var(--surface2)':'transparent', border:'none', borderRadius:8, color: active?'var(--text)':'var(--muted)', fontFamily:'DM Mono,monospace', fontSize:10, cursor:'pointer', textTransform:'uppercase', letterSpacing:1 }),
-    qBtn: (q, active) => {
-      const colors = { good:'var(--good)', mid:'var(--mid)', bad:'var(--bad)' }
-      const bgs    = { good:'rgba(106,255,212,0.15)', mid:'rgba(255,217,106,0.15)', bad:'rgba(255,106,106,0.15)' }
-      return { flex:1, padding:'6px 4px', borderRadius:8, border:`1.5px solid ${active?colors[q]:'var(--border)'}`, fontFamily:'DM Mono,monospace', fontSize:11, cursor:'pointer', textTransform:'uppercase', letterSpacing:1, background: active?bgs[q]:'transparent', color: active?colors[q]:'var(--muted)' }
-    },
-    hqBtn: (q, active) => {
-      const colors = { good:'var(--good)', mid:'var(--mid)', bad:'var(--bad)', none:'var(--muted)' }
-      const bgs    = { good:'rgba(106,255,212,0.15)', mid:'rgba(255,217,106,0.15)', bad:'rgba(255,106,106,0.15)', none:'rgba(107,107,136,0.15)' }
-      return { padding:'3px 8px', borderRadius:6, border:`1px solid ${active?colors[q]:'var(--border)'}`, fontFamily:'DM Mono,monospace', fontSize:10, cursor:'pointer', background: active?bgs[q]:'transparent', color: active?colors[q]:'var(--muted)', textTransform:'uppercase' }
-    }
-  }
-
-  return (
-    <div style={s.card}>
-      {/* Header */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20 }}>
-        <div>
-          <div style={{ fontFamily:'Syne,sans-serif', fontWeight:700, fontSize:18, marginBottom:4 }}>🎯 {goal.name}</div>
-          <div style={{ fontSize:11, color:'var(--muted)', textTransform:'uppercase', letterSpacing:1 }}>{elapsed} / {goal.total_days} gün • {remaining} gün kaldı</div>
-        </div>
-        <div style={{ display:'flex', gap:6 }}>
-          <button style={s.iconBtn} onClick={onEdit}>✎</button>
-          <button style={s.iconBtn} onClick={onDelete}>✕</button>
-        </div>
-      </div>
-
-      {/* Streak */}
-      {streak > 0 && (
-        <div style={{ display:'flex', alignItems:'center', gap:10, background:'rgba(255,147,64,0.08)', border:'1px solid rgba(255,147,64,0.3)', borderRadius:12, padding:'10px 16px', marginBottom:16 }}>
-          <span style={{ fontSize:20 }}>🔥</span>
-          <span style={{ fontFamily:'Syne,sans-serif', fontWeight:800, fontSize:20, color:'var(--fire)' }}>{streak}</span>
-          <span style={{ color:'var(--muted)', fontSize:12 }}>günlük seri</span>
-        </div>
+      {/* Profile Panel */}
+      {showProfile && (
+        <ProfilePanel
+          user={user}
+          onClose={() => setShowProfile(false)}
+          onOpenSharedGoal={(friend) => { setSharedFriend(friend); setShowShared(true) }}
+        />
       )}
 
-      {/* Stats */}
-      <div style={{ display:'flex', gap:8, marginBottom:20 }}>
-        {[
-          { val:`${op}%`, label:'Genel',     color:'var(--accent)' },
-          { val:`${tp}%`, label:'Bugün',     color:'var(--good)'   },
-          { val:`${ap}%`, label:'Günlük Ort',color:'var(--mid)'    },
-          { val:`${qs}%`, label:'Kalite',    color:qColor          },
-          { val:`${streak}🔥`, label:'Seri', color:'var(--fire)'   },
-        ].map((st,i) => (
-          <div key={i} style={s.statBox()}>
-            <div style={{ fontFamily:'Syne,sans-serif', fontWeight:800, fontSize:18, lineHeight:1, marginBottom:4, color:st.color }}>{st.val}</div>
-            <div style={{ fontSize:9, textTransform:'uppercase', letterSpacing:1, color:'var(--muted)' }}>{st.label}</div>
+      {/* Shared Goals Panel */}
+      {showShared && (
+        <SharedGoalsPanel
+          user={user}
+          initialFriend={sharedFriend}
+          onClose={() => { setShowShared(false); setSharedFriend(null) }}
+        />
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div style={{ position:'fixed', bottom:80, left:'50%', transform:'translateX(-50%)', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:'var(--r-md)', padding:'10px 18px', fontSize:13, color:'var(--text)', zIndex:999, whiteSpace:'nowrap', boxShadow:'0 4px 20px rgba(0,0,0,0.4)' }}>
+          {toast}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ─── Login ──────────────────────────────────────────────────────────────── */
+function LoginPage({ onLogin, dateLabel }) {
+  return (
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'100vh', padding:24 }}>
+      <div style={{ width:'100%', maxWidth:380 }}>
+        <div style={{ textAlign:'center', marginBottom:40 }}>
+          <div style={{ fontSize:32, fontWeight:700, letterSpacing:'-0.03em', marginBottom:6 }}>
+            Hedef<span style={{ color:'var(--accent)' }}>.</span>Takip
           </div>
-        ))}
+          <div style={{ fontSize:13, color:'var(--text3)' }}>{dateLabel}</div>
+        </div>
+
+        <div style={{ ...css.card, padding:28 }}>
+          <div style={{ fontSize:36, marginBottom:16, textAlign:'center' }}>🎯</div>
+          <div style={{ fontSize:18, fontWeight:600, marginBottom:8, textAlign:'center' }}>Hoş Geldin</div>
+          <div style={{ fontSize:14, color:'var(--text2)', marginBottom:28, textAlign:'center', lineHeight:1.6 }}>
+            Günlük hedeflerini takip et, kaliteni ölç, serine devam et.
+          </div>
+          <button
+            onClick={onLogin}
+            style={{ width:'100%', padding:'13px 20px', background:'#fff', border:'none', borderRadius:'var(--r-md)', color:'#111', fontSize:14, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}
+          >
+            <GoogleIcon />
+            Google ile Giriş Yap
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function GoogleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24">
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+    </svg>
+  )
+}
+
+/* ─── Goal Card ──────────────────────────────────────────────────────────── */
+function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabChange, onToggleHist, onToggleTask, onSetQuality, onRemoveLog, onSaveNote, onNoteChange, onEdit, onDelete }) {
+  const today    = todayStr()
+  const op       = Math.round(overallScore(tasks,logs,goal.start_date,goal.total_days)*100)
+  const tp       = Math.round(dayScore(tasks,logs,today)*100)
+  const streak   = getStreak(tasks,logs,goal.start_date)
+  const elapsed  = daysElapsed(goal.start_date)
+  const remaining= daysLeft(goal.start_date,goal.total_days)
+  const eta      = getETA(tasks,logs,goal.start_date,goal.total_days)
+  const earned   = getEarnedBadges(tasks,logs,goal.start_date,goal.total_days)
+  const todayLogs= logs.filter(l=>l.log_date===today)
+
+  let avgSum=0,avgCnt=0
+  for (let i=0;i<elapsed;i++) {
+    const ds=addDays(goal.start_date,i)
+    if (logs.some(l=>l.log_date===ds)) { avgSum+=dayScore(tasks,logs,ds); avgCnt++ }
+  }
+  const ap = avgCnt ? Math.round((avgSum/avgCnt)*100) : 0
+  const qs = logs.length ? Math.round(logs.reduce((s,l)=>s+(l.quality==='good'?100:l.quality==='mid'?60:30),0)/logs.length) : 0
+
+  const opColor = op>=70?'var(--good)':op>=35?'var(--accent)':'var(--bad)'
+  const qColor  = qs>=70?'var(--good)':qs>=40?'var(--mid)':'var(--bad)'
+  const gradBg  = op>=70?'var(--good)':op>=35?'var(--accent)':'var(--bad)'
+
+  /* History */
+  const histDays = []
+  for (let i=1;i<=14;i++) {
+    const d=new Date(); d.setDate(d.getDate()-i)
+    const ds=toDate(d)
+    if (ds<goal.start_date) break
+    histDays.push({ds,d})
+  }
+
+  /* Chart */
+  const chartDays = []
+  for (let i=13;i>=0;i--) {
+    const d=new Date(); d.setDate(d.getDate()-i)
+    const ds=toDate(d)
+    const dl=logs.filter(l=>l.log_date===ds)
+    chartDays.push({ ds, isToday:ds===today, label:i===0?'Bugün':(i%3===0?(d.getDate()+'/'+MONTHS[d.getMonth()]):''),
+      good:dl.filter(l=>l.quality==='good').length, mid:dl.filter(l=>l.quality==='mid').length, bad:dl.filter(l=>l.quality==='bad').length })
+  }
+  const n = tasks.length||1
+
+  return (
+    <div style={css.card}>
+      {/* Goal header */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16 }}>
+        <div style={{ flex:1, marginRight:12 }}>
+          <div style={{ fontSize:16, fontWeight:600, marginBottom:4 }}>{goal.name}</div>
+          <div style={{ fontSize:12, color:'var(--text3)' }}>
+            {elapsed} / {goal.total_days} gün tamamlandı · {remaining} gün kaldı
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:6 }}>
+          <button style={css.iconBtn} onClick={onEdit}>✎</button>
+          <button style={{ ...css.iconBtn, color:'var(--bad)' }} onClick={onDelete}>✕</button>
+        </div>
       </div>
 
-      {/* Progress */}
+      {/* Progress bar */}
       <div style={{ marginBottom:16 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', marginBottom:8 }}>
-          <span style={{ fontSize:11, textTransform:'uppercase', letterSpacing:'1.5px', color:'var(--muted)' }}>Hedef İlerlemesi</span>
-          <span style={{ fontFamily:'Syne,sans-serif', fontWeight:700, fontSize:14, color:opColor }}>{op}%</span>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+          <span style={{ fontSize:12, color:'var(--text3)' }}>Genel İlerleme</span>
+          <span style={{ fontSize:14, fontWeight:700, color:opColor }}>{op}%</span>
         </div>
-        <div style={{ height:6, background:'var(--bg)', borderRadius:99, overflow:'hidden', border:'1px solid var(--border)' }}>
-          <div style={{ height:'100%', width:`${op}%`, borderRadius:99, background:grad, transition:'width 0.6s' }} />
+        <div style={{ height:8, background:'var(--surface2)', borderRadius:99, overflow:'hidden' }}>
+          <div style={{ height:'100%', width:`${op}%`, background:gradBg, borderRadius:99, transition:'width 0.5s', opacity:0.85 }} />
         </div>
+      </div>
+
+      {/* Stats grid */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8, marginBottom:16 }}>
+        {[
+          { label:'Bugün',       val:`${tp}%`,      color:'var(--text)' },
+          { label:'Günlük Ort.', val:`${ap}%`,      color:'var(--text)' },
+          { label:'Kalite Sk.',  val:`${qs}%`,      color:qColor        },
+          { label:'Seri',        val:`${streak} 🔥`, color:'var(--fire)' },
+        ].map((s,i) => (
+          <div key={i} style={{ background:'var(--surface2)', borderRadius:'var(--r-md)', padding:'12px 14px' }}>
+            <div style={{ fontSize:11, color:'var(--text3)', marginBottom:4 }}>{s.label}</div>
+            <div style={{ fontSize:18, fontWeight:700, color:s.color }}>{s.val}</div>
+          </div>
+        ))}
       </div>
 
       {/* ETA */}
-      <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:12, padding:'12px 16px', display:'flex', alignItems:'center', gap:10, marginBottom:20 }}>
-        <span style={{ fontSize:16 }}>⏱</span>
-        <span style={{ fontSize:12, color:eta.color }}>{eta.text}</span>
+      <div style={{ background:'var(--surface2)', borderRadius:'var(--r-md)', padding:'10px 14px', marginBottom:16, display:'flex', alignItems:'center', gap:8 }}>
+        <span style={{ fontSize:14 }}>⏱</span>
+        <span style={{ fontSize:13, color:eta.color }}>{eta.text}</span>
       </div>
 
-      {/* Badges */}
-      <div style={{ marginBottom:20 }}>
-        <div style={s.sectionLabel}><span>🏆 Rozetler</span></div>
-        <div style={{ display:'flex', flexWrap:'wrap', gap:8 }}>
-          {BADGES.map(b => {
-            const e = earned.has(b.id)
-            return (
-              <div key={b.id} style={{ display:'flex', alignItems:'center', gap:6, padding:'6px 12px', borderRadius:20, border:`1px solid ${e?b.border:'var(--border)'}`, background:e?b.color:'transparent', opacity:e?1:0.3, filter:e?'none':'grayscale(1)', fontSize:11 }}>
-                <span style={{ fontSize:14 }}>{b.icon}</span>
-                <span>{b.label}</span>
-              </div>
-            )
-          })}
+      {/* Streak banner */}
+      {streak >= 3 && (
+        <div style={{ background:'var(--fire-bg)', border:'1px solid rgba(251,146,60,0.25)', borderRadius:'var(--r-md)', padding:'10px 14px', marginBottom:16, display:'flex', alignItems:'center', gap:10 }}>
+          <span style={{ fontSize:20 }}>🔥</span>
+          <div>
+            <div style={{ fontSize:15, fontWeight:700, color:'var(--fire)' }}>{streak} günlük seri!</div>
+            <div style={{ fontSize:12, color:'var(--text3)' }}>Devam et, bırakma</div>
+          </div>
         </div>
+      )}
+
+      {/* Badges */}
+      <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:16 }}>
+        {BADGES.map(b => {
+          const e = earned.has(b.id)
+          return (
+            <div key={b.id} style={{ display:'flex', alignItems:'center', gap:5, padding:'5px 10px', borderRadius:99, background:e?'var(--accent-light)':'transparent', border:`1px solid ${e?'rgba(99,102,241,0.3)':'var(--border)'}`, opacity:e?1:0.35, fontSize:12 }}>
+              <span>{b.icon}</span>
+              <span style={{ fontWeight:e?500:400, color:e?'var(--text)':'var(--text3)' }}>{b.label}</span>
+            </div>
+          )
+        })}
       </div>
 
       {/* Tabs */}
-      <div style={{ display:'flex', gap:4, marginBottom:16, background:'var(--bg)', border:'1px solid var(--border)', borderRadius:12, padding:4 }}>
-        {['tasks','history','chart'].map(t => (
-          <button key={t} style={s.tabBtn(tab===t)} onClick={() => onTabChange(t)}>
-            {t==='tasks'?'Görevler':t==='history'?'Geçmiş':'Grafik'}
-          </button>
+      <div style={{ display:'flex', background:'var(--surface2)', borderRadius:'var(--r-md)', padding:3, marginBottom:16 }}>
+        {[['tasks','Görevler'],['history','Geçmiş'],['chart','Grafik']].map(([t,l]) => (
+          <button key={t} style={css.tab(tab===t)} onClick={()=>onTabChange(t)}>{l}</button>
         ))}
       </div>
 
-      {/* TASKS TAB */}
-      {tab === 'tasks' && (
+      {/* TASKS */}
+      {tab==='tasks' && (
         <div>
-          <div style={s.sectionLabel}>
-            <span>Bugünün Görevleri ({todayLogs.length}/{tasks.length})</span>
-            <button onClick={async () => { for (const l of todayLogs) await supabase.from('daily_logs').delete().eq('id', l.id); await reloadLogsLocal() }} style={{ fontSize:10, background:'transparent', border:'none', color:'var(--muted)', cursor:'pointer', textTransform:'uppercase', letterSpacing:1 }}>Günü sıfırla</button>
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+            <span style={{ ...css.label }}>Bugünün Görevleri · {todayLogs.length}/{tasks.length}</span>
+            <button onClick={async()=>{ for(const l of todayLogs) await createClient().from('daily_logs').delete().eq('id',l.id) }} style={{ background:'none', border:'none', fontSize:12, color:'var(--text3)', cursor:'pointer' }}>Sıfırla</button>
           </div>
           <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
             {tasks.map(t => {
-              const log = todayLogs.find(l => l.task_id === t.id)
-              const q = log?.quality
-              const colors = { good:'rgba(106,255,212,0.45)', mid:'rgba(255,217,106,0.45)', bad:'rgba(255,106,106,0.45)' }
+              const log = todayLogs.find(l=>l.task_id===t.id)
+              const q   = log?.quality
+              const qBg = { good:'var(--good-bg)', mid:'var(--mid-bg)', bad:'var(--bad-bg)' }
+              const qBorder = { good:'rgba(52,211,153,0.3)', mid:'rgba(251,191,36,0.3)', bad:'rgba(248,113,113,0.3)' }
               return (
-                <div key={t.id} style={{ background:'var(--bg)', border:`1px solid ${q?colors[q]:'var(--border)'}`, borderRadius:12, overflow:'hidden' }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 14px', cursor:'pointer' }} onClick={() => onToggleTask(t.id)}>
-                    <div style={{ width:18, height:18, border:`1.5px solid ${q?('var(--'+q+')'):'var(--border)'}`, borderRadius:5, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, flexShrink:0, background:q?`rgba(${q==='good'?'106,255,212':q==='mid'?'255,217,106':'255,106,106'},0.15)`:'transparent', color:q?`var(--${q})`:'transparent' }}>
+                <div key={t.id} style={{ background: q?qBg[q]:'var(--surface2)', border:`1px solid ${q?qBorder[q]:'var(--border)'}`, borderRadius:'var(--r-md)', overflow:'hidden' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', cursor:'pointer' }} onClick={()=>onToggleTask(t.id)}>
+                    <div style={{ width:22, height:22, borderRadius:6, border:`2px solid ${q?`var(--${q})`:'var(--border2)'}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, flexShrink:0, background:q?qBg[q]:'transparent', color:`var(--${q||'text3'})`, fontWeight:700 }}>
                       {q ? QSym[q] : ''}
                     </div>
-                    <div style={{ fontSize:13, flex:1, textDecoration:q?'line-through':'none', color:q?'var(--muted)':'var(--text)' }}>{t.name}</div>
-                    {q && <div style={{ fontSize:10, textTransform:'uppercase', letterSpacing:1, color:`var(--${q})` }}>{QLabel[q]}</div>}
+                    <div style={{ flex:1, fontSize:14, textDecoration:q?'line-through':'none', color:q?'var(--text3)':'var(--text)' }}>{t.name}</div>
+                    {q && <span style={{ fontSize:11, fontWeight:600, color:`var(--${q})`, background:qBg[q], padding:'2px 8px', borderRadius:99 }}>{QLabel[q]}</span>}
                   </div>
                   {q && (
-                    <div style={{ display:'flex', padding:'0 14px 10px', gap:6 }}>
+                    <div style={{ display:'flex', gap:6, padding:'0 14px 12px' }}>
                       {['good','mid','bad'].map(qv => (
-                        <button key={qv} style={s.qBtn(qv, q===qv)} onClick={() => onSetQuality(t.id, qv)}>
-                          {qv==='good'?'✓ İyi':qv==='mid'?'~ Orta':'✗ Kötü'}
+                        <button key={qv} onClick={()=>onSetQuality(t.id,qv)} style={{ flex:1, padding:'7px 4px', borderRadius:'var(--r-sm)', border:`1.5px solid ${q===qv?`var(--${qv})`:'var(--border)'}`, background:q===qv?qBg[qv]:'transparent', color:q===qv?`var(--${qv})`:'var(--text3)', fontSize:12, fontWeight:600, cursor:'pointer' }}>
+                          {QLabel[qv]}
                         </button>
                       ))}
                     </div>
@@ -535,68 +551,60 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHistory, noteInputs, onTa
               )
             })}
           </div>
-
-          {/* Today note */}
           <NoteSection goalId={goal.id} ds={today} notes={notes} noteInputs={noteInputs} onNoteChange={onNoteChange} onSaveNote={onSaveNote} />
 
           {/* Quality breakdown */}
-          <div style={{ marginTop:18 }}>
-            <div style={s.sectionLabel}><span>Toplam Kalite Dağılımı</span></div>
-            <div style={{ display:'flex', gap:16, fontSize:11, marginBottom:8 }}>
-              <span style={{ color:'var(--good)' }}>✓ İyi: {qb.good}</span>
-              <span style={{ color:'var(--mid)' }}>~ Orta: {qb.mid}</span>
-              <span style={{ color:'var(--bad)' }}>✗ Kötü: {qb.bad}</span>
-            </div>
-            {qTotal > 0 && (
-              <div style={{ display:'flex', height:6, borderRadius:99, overflow:'hidden', gap:1 }}>
-                <div style={{ flex:qb.good/qTotal*100, background:'var(--good)', opacity:0.7, borderRadius:99 }} />
-                <div style={{ flex:qb.mid /qTotal*100, background:'var(--mid)',  opacity:0.7, borderRadius:99 }} />
-                <div style={{ flex:qb.bad /qTotal*100, background:'var(--bad)',  opacity:0.7, borderRadius:99 }} />
+          {logs.length > 0 && (
+            <div style={{ marginTop:16 }}>
+              <div style={{ ...css.label, marginBottom:8 }}>Toplam Kalite Dağılımı</div>
+              <div style={{ display:'flex', gap:12, fontSize:13, marginBottom:8 }}>
+                <span style={{ color:'var(--good)' }}>✓ İyi: {logs.filter(l=>l.quality==='good').length}</span>
+                <span style={{ color:'var(--mid)' }}>− Orta: {logs.filter(l=>l.quality==='mid').length}</span>
+                <span style={{ color:'var(--bad)' }}>✕ Kötü: {logs.filter(l=>l.quality==='bad').length}</span>
               </div>
-            )}
-          </div>
+              <QBar logs={logs} />
+            </div>
+          )}
         </div>
       )}
 
-      {/* HISTORY TAB */}
-      {tab === 'history' && (
+      {/* HISTORY */}
+      {tab==='history' && (
         <div>
-          <div style={s.sectionLabel}><span>Son 14 Gün — Düzenle</span></div>
-          {histDays.length === 0 && <div style={{ textAlign:'center', padding:24, color:'var(--muted)', fontSize:12 }}>Henüz geçmiş gün yok</div>}
-          {histDays.map(({ ds, d }) => {
-            const sc = Math.round(dayScore(tasks, logs, ds) * 100)
-            const key = `${goal.id}:${ds}`
-            const isOpen = !!openHistory[key]
-            const dayLabel = `${DAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]}`
-            const scColor = sc>=70?'var(--good)':sc>=30?'var(--mid)':'var(--bad)'
-            const note = notes[key] || ''
-            const dayLogs = logs.filter(l => l.log_date === ds)
-
+          <div style={{ ...css.label, marginBottom:10 }}>Son 14 Gün</div>
+          {histDays.length===0 && <div style={{ textAlign:'center', padding:20, color:'var(--text3)', fontSize:13 }}>Henüz geçmiş gün yok</div>}
+          {histDays.map(({ds,d}) => {
+            const sc     = Math.round(dayScore(tasks,logs,ds)*100)
+            const key    = `${goal.id}:${ds}`
+            const isOpen = !!openHist[key]
+            const dayLogs= logs.filter(l=>l.log_date===ds)
+            const scColor= sc>=70?'var(--good)':sc>=30?'var(--mid)':'var(--text3)'
+            const note   = notes[key]||''
             return (
-              <div key={ds} style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:12, marginBottom:8, overflow:'hidden' }}>
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 14px', cursor:'pointer' }} onClick={() => onToggleHistory(key)}>
-                  <div style={{ fontSize:12, display:'flex', alignItems:'center', gap:8 }}>
-                    <span>{isOpen?'▾':'▸'}</span>
-                    <span>{dayLabel}</span>
-                    {note && <span style={{ fontSize:10, color:'var(--accent)' }}>📝</span>}
+              <div key={ds} style={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:'var(--r-md)', marginBottom:8, overflow:'hidden' }}>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 14px', cursor:'pointer' }} onClick={()=>onToggleHist(key)}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:13 }}>
+                    <span style={{ color:'var(--text3)', fontSize:11 }}>{isOpen?'▾':'▸'}</span>
+                    <span>{DAYS[d.getDay()]}, {d.getDate()} {MONTHS[d.getMonth()]}</span>
+                    {note && <span style={{ fontSize:11, color:'var(--accent)' }}>📝</span>}
                   </div>
-                  <div style={{ fontFamily:'Syne,sans-serif', fontWeight:700, fontSize:13, color:scColor }}>{sc>0?`${sc}%`:'—'}</div>
+                  <span style={{ fontSize:13, fontWeight:600, color:scColor }}>{sc>0?`${sc}%`:'—'}</span>
                 </div>
                 {isOpen && (
-                  <div style={{ padding:'0 14px 14px' }}>
+                  <div style={{ padding:'0 14px 14px', borderTop:'1px solid var(--border)' }}>
                     {tasks.map(t => {
-                      const log = dayLogs.find(l => l.task_id === t.id)
-                      const q = log?.quality || null
+                      const log = dayLogs.find(l=>l.task_id===t.id)
+                      const q   = log?.quality||null
                       return (
-                        <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'6px 0', borderBottom:'1px solid var(--border)' }}>
-                          <div style={{ flex:1, fontSize:12 }}>{t.name}</div>
+                        <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
+                          <div style={{ flex:1, fontSize:13 }}>{t.name}</div>
                           <div style={{ display:'flex', gap:4 }}>
-                            {['good','mid','bad'].map(qv => (
-                              <button key={qv} style={s.hqBtn(qv, q===qv)} onClick={() => onSetQuality(t.id, qv, ds)}>
-                                {qv==='good'?'İyi':qv==='mid'?'Orta':'Kötü'}
+                            {['good','mid','bad'].map(qv=>(
+                              <button key={qv} onClick={()=>onSetQuality(t.id,qv,ds)} style={{ padding:'4px 10px', borderRadius:'var(--r-sm)', border:`1px solid ${q===qv?`var(--${qv})`:'var(--border)'}`, background:q===qv?{ good:'var(--good-bg)', mid:'var(--mid-bg)', bad:'var(--bad-bg)' }[qv]:'transparent', color:q===qv?`var(--${qv})`:'var(--text3)', fontSize:11, fontWeight:500, cursor:'pointer' }}>
+                                {QLabel[qv]}
                               </button>
                             ))}
-                            <button style={s.hqBtn('none', !q)} onClick={() => onRemoveLog(t.id, ds)}>—</button>
+                            <button onClick={()=>onRemoveLog(t.id,ds)} style={{ padding:'4px 8px', borderRadius:'var(--r-sm)', border:'1px solid var(--border)', background:'transparent', color:'var(--text3)', fontSize:11, cursor:'pointer' }}>—</button>
                           </div>
                         </div>
                       )
@@ -610,31 +618,30 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHistory, noteInputs, onTa
         </div>
       )}
 
-      {/* CHART TAB */}
-      {tab === 'chart' && (
-        <div style={{ background:'var(--bg)', border:'1px solid var(--border)', borderRadius:14, padding:'20px 16px 16px' }}>
-          <div style={{ fontSize:10, textTransform:'uppercase', letterSpacing:2, color:'var(--muted)', marginBottom:16 }}>Son 21 Gün — Görev Kalite Dağılımı</div>
-          <div style={{ display:'flex', alignItems:'flex-end', gap:3, height:120 }}>
-            {chartDays.map(({ ds, c, isToday, label }) => {
-              const totalH = 110, hasAny = c.good+c.mid+c.bad > 0
-              const gH = Math.round((c.good/n)*totalH), mH = Math.round((c.mid/n)*totalH), bH = Math.round((c.bad/n)*totalH)
-              const stackH = hasAny ? Math.max(gH+mH+bH, 4) : 3
+      {/* CHART */}
+      {tab==='chart' && (
+        <div>
+          <div style={{ ...css.label, marginBottom:12 }}>Son 14 Gün</div>
+          <div style={{ display:'flex', alignItems:'flex-end', gap:4, height:100, marginBottom:8 }}>
+            {chartDays.map(({ds,c,isToday,label,good,mid,bad})=>{
+              const totalH=90, hasAny=good+mid+bad>0
+              const gH=Math.round((good/n)*totalH), mH=Math.round((mid/n)*totalH), bH=Math.round((bad/n)*totalH)
               return (
-                <div key={ds} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:2, height:'100%', justifyContent:'flex-end' }}>
-                  <div style={{ width:'100%', display:'flex', flexDirection:'column-reverse', borderRadius:'3px 3px 0 0', overflow:'hidden', height:stackH }}>
-                    {c.good>0 && <div style={{ width:'100%', height:gH, background:'var(--good)', opacity:0.8 }} />}
-                    {c.mid >0 && <div style={{ width:'100%', height:mH, background:'var(--mid)',  opacity:0.8 }} />}
-                    {c.bad >0 && <div style={{ width:'100%', height:bH, background:'var(--bad)',  opacity:0.8 }} />}
-                    {!hasAny   && <div style={{ width:'100%', height:3,  background:'var(--border)', opacity:0.5 }} />}
+                <div key={ds} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-end', height:'100%', gap:2 }}>
+                  <div style={{ width:'100%', display:'flex', flexDirection:'column-reverse', borderRadius:'4px 4px 0 0', overflow:'hidden', minHeight:hasAny?Math.max(gH+mH+bH,4):3 }}>
+                    {good>0 && <div style={{ height:gH, background:'var(--good)', opacity:0.8 }} />}
+                    {mid >0 && <div style={{ height:mH, background:'var(--mid)',  opacity:0.8 }} />}
+                    {bad >0 && <div style={{ height:bH, background:'var(--bad)',  opacity:0.8 }} />}
+                    {!hasAny && <div style={{ height:3, background:'var(--border)' }} />}
                   </div>
-                  <div style={{ fontSize:8, color: isToday?'var(--accent)':'var(--muted)', marginTop:5 }}>{label}</div>
+                  {label && <div style={{ fontSize:9, color:isToday?'var(--accent)':'var(--text3)', marginTop:4, textAlign:'center' }}>{label}</div>}
                 </div>
               )
             })}
           </div>
-          <div style={{ display:'flex', gap:14, marginTop:14, flexWrap:'wrap' }}>
-            {[['var(--good)','İyi'],['var(--mid)','Orta'],['var(--bad)','Kötü'],['var(--border)','Yapılmadı']].map(([c,l]) => (
-              <div key={l} style={{ display:'flex', alignItems:'center', gap:5, fontSize:10, color:'var(--muted)' }}>
+          <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
+            {[['var(--good)','İyi'],['var(--mid)','Orta'],['var(--bad)','Kötü'],['var(--border)','Yapılmadı']].map(([c,l])=>(
+              <div key={l} style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:'var(--text3)' }}>
                 <div style={{ width:8, height:8, borderRadius:'50%', background:c }} />{l}
               </div>
             ))}
@@ -643,88 +650,97 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHistory, noteInputs, onTa
       )}
     </div>
   )
-
-  async function reloadLogsLocal() {
-    const { data: l } = await createClient().from('daily_logs').select('*').in('task_id', tasks.map(x=>x.id))
-    // This is handled by parent via onToggleTask
-  }
 }
 
-// ── Note Section ──────────────────────────────────────────────────────────
-function NoteSection({ goalId, ds, notes, noteInputs, onNoteChange, onSaveNote }) {
-  const key = `${goalId}:${ds}`
-  const saved = notes[key] || ''
-  const input = noteInputs[key] ?? saved
-
+/* ─── Quality Bar ────────────────────────────────────────────────────────── */
+function QBar({ logs }) {
+  const good = logs.filter(l=>l.quality==='good').length
+  const mid  = logs.filter(l=>l.quality==='mid').length
+  const bad  = logs.filter(l=>l.quality==='bad').length
+  const total = good+mid+bad
+  if (!total) return null
   return (
-    <div style={{ marginTop:16 }}>
-      <div style={{ fontSize:10, textTransform:'uppercase', letterSpacing:2, color:'var(--muted)', marginBottom:6 }}>Günlük Not</div>
+    <div style={{ display:'flex', height:6, borderRadius:99, overflow:'hidden', gap:1 }}>
+      <div style={{ flex:good, background:'var(--good)', opacity:0.7, borderRadius:99 }} />
+      <div style={{ flex:mid,  background:'var(--mid)',  opacity:0.7, borderRadius:99 }} />
+      <div style={{ flex:bad,  background:'var(--bad)',  opacity:0.7, borderRadius:99 }} />
+    </div>
+  )
+}
+
+/* ─── Note Section ───────────────────────────────────────────────────────── */
+function NoteSection({ goalId, ds, notes, noteInputs, onNoteChange, onSaveNote }) {
+  const key   = `${goalId}:${ds}`
+  const saved = notes[key]||''
+  const input = noteInputs[key] ?? saved
+  return (
+    <div style={{ marginTop:12 }}>
+      <div style={{ ...css.label, marginBottom:6 }}>Günlük Not</div>
       {saved && (
-        <div style={{ background:'rgba(124,106,255,0.06)', border:'1px solid rgba(124,106,255,0.2)', borderRadius:10, padding:'10px 12px', fontSize:12, color:'var(--text)', marginBottom:8, lineHeight:1.6 }}>
-          <div style={{ fontSize:10, color:'var(--muted)', marginBottom:4 }}>📝 Kaydedildi</div>
+        <div style={{ background:'var(--accent-light)', border:'1px solid rgba(99,102,241,0.2)', borderRadius:'var(--r-md)', padding:'10px 12px', fontSize:13, color:'var(--text2)', marginBottom:8, lineHeight:1.6 }}>
           {saved}
         </div>
       )}
       <textarea
         value={input}
-        onChange={e => onNoteChange(key, e.target.value)}
-        placeholder="Bu gün hakkında bir şeyler yaz..."
-        style={{ width:'100%', background:'var(--bg)', border:'1px solid var(--border)', borderRadius:10, padding:'10px 12px', color:'var(--text)', fontFamily:'DM Mono,monospace', fontSize:12, outline:'none', resize:'vertical', minHeight:60 }}
+        onChange={e=>onNoteChange(key,e.target.value)}
+        placeholder="Bu gün nasıl geçti?"
+        rows={2}
+        style={{ ...css.input, fontSize:13, resize:'vertical', lineHeight:1.6 }}
       />
-      <button onClick={() => onSaveNote(ds)} style={{ marginTop:6, padding:'6px 14px', background:'transparent', border:'1px solid var(--border)', borderRadius:8, color:'var(--muted)', fontFamily:'DM Mono,monospace', fontSize:10, cursor:'pointer', textTransform:'uppercase', letterSpacing:1 }}>
-        Notu Kaydet
+      <button onClick={()=>onSaveNote(ds)} style={{ marginTop:6, padding:'7px 14px', background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:'var(--r-sm)', color:'var(--text2)', fontSize:12, fontWeight:500, cursor:'pointer' }}>
+        Kaydet
       </button>
     </div>
   )
 }
 
-// ── Goal Modal ────────────────────────────────────────────────────────────
+/* ─── Goal Modal ─────────────────────────────────────────────────────────── */
 function GoalModal({ goal, tasks, onSave, onClose }) {
-  const [name, setName] = useState(goal?.name || '')
-  const [days, setDays] = useState(goal?.total_days || '')
+  const [name,      setName]      = useState(goal?.name||'')
+  const [days,      setDays]      = useState(goal?.total_days||'')
   const [taskNames, setTaskNames] = useState(tasks.length ? tasks.map(t=>t.name) : [''])
-
-  function addTask() { setTaskNames(p => [...p, '']) }
-  function removeTask(i) { if (taskNames.length <= 1) return; setTaskNames(p => p.filter((_,j)=>j!==i)) }
-  function updateTask(i, v) { setTaskNames(p => p.map((t,j)=>j===i?v:t)) }
 
   function handleSave() {
     const filtered = taskNames.filter(t=>t.trim())
-    if (!name.trim() || !days || !filtered.length) { alert('Lütfen tüm alanları doldur.'); return }
+    if (!name.trim()||!days||!filtered.length) { alert('Lütfen tüm alanları doldur.'); return }
     onSave(name.trim(), parseInt(days), filtered)
   }
 
   return (
-    <div style={{ position:'fixed', inset:0, background:'rgba(10,10,15,0.9)', backdropFilter:'blur(8px)', zIndex:200, display:'flex', alignItems:'center', justifyContent:'center', padding:24, overflowY:'auto' }} onClick={e => e.target===e.currentTarget&&onClose()}>
-      <div style={{ background:'var(--surface)', border:'1px solid var(--border)', borderRadius:20, padding:32, width:'100%', maxWidth:500, margin:'auto' }}>
-        <div style={{ fontFamily:'Syne,sans-serif', fontWeight:700, fontSize:20, marginBottom:24 }}>{goal ? 'Hedefi Düzenle' : 'Yeni Hedef'}</div>
-
-        <div style={{ marginBottom:16 }}>
-          <div style={{ fontSize:10, textTransform:'uppercase', letterSpacing:2, color:'var(--muted)', marginBottom:8 }}>Hedef Adı</div>
-          <input value={name} onChange={e=>setName(e.target.value)} placeholder="örn: 30 günde 5kg ver" style={{ width:'100%', background:'var(--bg)', border:'1px solid var(--border)', borderRadius:10, padding:'12px 14px', color:'var(--text)', fontFamily:'DM Mono,monospace', fontSize:13, outline:'none' }} />
+    <div style={{ position:'fixed', inset:0, background:'rgba(10,12,18,0.88)', backdropFilter:'blur(6px)', zIndex:200, display:'flex', alignItems:'flex-end', justifyContent:'center', padding:'0' }} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{ background:'var(--surface)', borderRadius:'20px 20px 0 0', padding:'24px 20px 40px', width:'100%', maxWidth:640, maxHeight:'90vh', overflowY:'auto' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+          <div style={{ fontSize:17, fontWeight:600 }}>{goal?'Hedefi Düzenle':'Yeni Hedef'}</div>
+          <button onClick={onClose} style={{ ...css.iconBtn }}>✕</button>
         </div>
 
-        <div style={{ marginBottom:16 }}>
-          <div style={{ fontSize:10, textTransform:'uppercase', letterSpacing:2, color:'var(--muted)', marginBottom:8 }}>Süre (gün)</div>
-          <input type="number" value={days} onChange={e=>setDays(e.target.value)} placeholder="örn: 30" min="1" style={{ width:'100%', background:'var(--bg)', border:'1px solid var(--border)', borderRadius:10, padding:'12px 14px', color:'var(--text)', fontFamily:'DM Mono,monospace', fontSize:13, outline:'none' }} />
+        <div style={{ marginBottom:14 }}>
+          <div style={{ ...css.label, marginBottom:6 }}>Hedef Adı</div>
+          <input value={name} onChange={e=>setName(e.target.value)} placeholder="örn: 30 günde 5kg ver" style={css.input} />
         </div>
 
-        <div style={{ marginBottom:16 }}>
-          <div style={{ fontSize:10, textTransform:'uppercase', letterSpacing:2, color:'var(--muted)', marginBottom:8 }}>Günlük Görevler</div>
+        <div style={{ marginBottom:14 }}>
+          <div style={{ ...css.label, marginBottom:6 }}>Süre (gün)</div>
+          <input type="number" value={days} onChange={e=>setDays(e.target.value)} placeholder="örn: 30" min="1" style={css.input} />
+        </div>
+
+        <div style={{ marginBottom:20 }}>
+          <div style={{ ...css.label, marginBottom:6 }}>Günlük Görevler</div>
           <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            {taskNames.map((t,i) => (
-              <div key={i} style={{ display:'flex', gap:8 }}>
-                <input value={t} onChange={e=>updateTask(i,e.target.value)} placeholder={`Görev ${i+1}`} style={{ flex:1, background:'var(--bg)', border:'1px solid var(--border)', borderRadius:10, padding:'12px 14px', color:'var(--text)', fontFamily:'DM Mono,monospace', fontSize:13, outline:'none' }} />
-                <button onClick={()=>removeTask(i)} style={{ width:32, height:44, background:'transparent', border:'1px solid var(--border)', borderRadius:8, color:'var(--muted)', cursor:'pointer', fontSize:16 }}>×</button>
+            {taskNames.map((t,i)=>(
+              <div key={i} style={{ display:'flex', gap:8, alignItems:'center' }}>
+                <input value={t} onChange={e=>setTaskNames(p=>p.map((x,j)=>j===i?e.target.value:x))} placeholder={`Görev ${i+1}`} style={{ ...css.input }} />
+                <button onClick={()=>{ if(taskNames.length>1) setTaskNames(p=>p.filter((_,j)=>j!==i)) }} style={{ ...css.iconBtn, flexShrink:0 }}>✕</button>
               </div>
             ))}
           </div>
-          <button onClick={addTask} style={{ marginTop:10, background:'transparent', border:'none', color:'var(--accent)', fontFamily:'DM Mono,monospace', fontSize:11, cursor:'pointer', textTransform:'uppercase', letterSpacing:1 }}>+ görev ekle</button>
+          <button onClick={()=>setTaskNames(p=>[...p,''])} style={{ marginTop:10, background:'none', border:'none', color:'var(--accent)', fontSize:13, fontWeight:500, cursor:'pointer' }}>+ Görev Ekle</button>
         </div>
 
-        <div style={{ display:'flex', gap:10, marginTop:24 }}>
-          <button onClick={onClose} style={{ padding:'12px 20px', background:'transparent', border:'1px solid var(--border)', borderRadius:10, color:'var(--muted)', fontFamily:'DM Mono,monospace', fontSize:13, cursor:'pointer' }}>İptal</button>
-          <button onClick={handleSave} style={{ flex:1, padding:12, background:'var(--accent)', border:'none', borderRadius:10, color:'white', fontFamily:'Syne,sans-serif', fontWeight:700, fontSize:14, cursor:'pointer' }}>Kaydet</button>
+        <div style={{ display:'flex', gap:10 }}>
+          <button onClick={onClose} style={{ ...css.btn('secondary'), flex:'0 0 auto' }}>İptal</button>
+          <button onClick={handleSave} style={{ ...css.btn('primary'), flex:1 }}>Kaydet</button>
         </div>
       </div>
     </div>
