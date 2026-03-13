@@ -456,12 +456,10 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
   }
   const ap = avgCnt ? Math.round((avgSum/avgCnt)*100) : 0
   const qs = logs.length ? Math.round(logs.reduce((s,l)=>s+(l.quality==='good'?100:l.quality==='mid'?60:30),0)/logs.length) : 0
-
   const opColor = op>=70?'var(--good)':op>=35?'var(--accent)':'var(--bad)'
   const qColor  = qs>=70?'var(--good)':qs>=40?'var(--mid)':'var(--bad)'
   const gradBg  = op>=70?'var(--good)':op>=35?'var(--accent)':'var(--bad)'
 
-  /* History */
   const histDays = []
   for (let i=1;i<=14;i++) {
     const d=new Date(); d.setDate(d.getDate()-i)
@@ -470,7 +468,6 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
     histDays.push({ds,d})
   }
 
-  /* Chart */
   const chartDays = []
   for (let i=13;i>=0;i--) {
     const d=new Date(); d.setDate(d.getDate()-i)
@@ -484,18 +481,14 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
   return (
     <div style={{ ...css.card, padding:0, overflow:'hidden', marginBottom:10 }}>
 
-      {/* ── Collapsed header — her zaman görünür ── */}
-      <div
-        onClick={onToggleOpen}
-        style={{ padding:'14px 16px', cursor:'pointer', userSelect:'none' }}
-      >
+      {/* Collapsed header */}
+      <div onClick={onToggleOpen} style={{ padding:'14px 16px', cursor:'pointer', userSelect:'none' }}>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
           <div style={{ flex:1 }}>
             <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
               <span style={{ fontSize:15, fontWeight:600, color:'var(--text)' }}>{goal.name}</span>
               {streak>=3 && <span style={{ fontSize:11, background:'rgba(251,146,60,0.12)', border:'1px solid rgba(251,146,60,0.3)', color:'var(--fire)', borderRadius:99, padding:'1px 8px' }}>🔥{streak}</span>}
             </div>
-            {/* Mini progress bar */}
             <div style={{ height:4, background:'var(--surface2)', borderRadius:99, overflow:'hidden', marginBottom:6 }}>
               <div style={{ height:'100%', width:`${op}%`, background:gradBg, borderRadius:99, transition:'width 0.5s' }} />
             </div>
@@ -506,33 +499,25 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
               <span style={{ marginLeft:'auto' }}>{elapsed}/{goal.total_days}g</span>
             </div>
           </div>
-          {/* Bugünkü durum + chevron */}
-          <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
-            <div style={{ textAlign:'center' }}>
-              <div style={{ fontSize:11, color: doneTodayCount===tasks.length&&tasks.length>0?'var(--good)':'var(--text3)' }}>
-                {doneTodayCount}/{tasks.length}
-              </div>
-            </div>
-            <div style={{ display:'flex', gap:4 }}>
-              <button style={{ ...css.iconBtn, width:28, height:28, fontSize:12 }} onClick={e=>{e.stopPropagation();onEdit()}}>✎</button>
-              <button style={{ ...css.iconBtn, width:28, height:28, fontSize:12, color:'var(--bad)' }} onClick={e=>{e.stopPropagation();onDelete()}}>✕</button>
-            </div>
+          <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
+            <span style={{ fontSize:11, color:doneTodayCount===tasks.length&&tasks.length>0?'var(--good)':'var(--text3)' }}>{doneTodayCount}/{tasks.length}</span>
+            <button style={{ ...css.iconBtn, width:28, height:28, fontSize:12 }} onClick={e=>{e.stopPropagation();onEdit()}}>✎</button>
+            <button style={{ ...css.iconBtn, width:28, height:28, fontSize:12, color:'var(--bad)' }} onClick={e=>{e.stopPropagation();onDelete()}}>✕</button>
             <span style={{ fontSize:16, color:'var(--text3)', transform:isOpen?'rotate(180deg)':'none', display:'inline-block', transition:'transform 0.2s' }}>⌄</span>
           </div>
         </div>
       </div>
 
-      {/* ── Expanded detail ── */}
+      {/* Expanded */}
       {isOpen && (
         <div style={{ borderTop:'1px solid var(--border)' }}>
 
-          {/* Stats grid */}
           <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:1, background:'var(--border)' }}>
             {[
-              ['Bugün',   `${tp}%`,       'var(--text)'],
-              ['Ort.',    `${ap}%`,       'var(--text)'],
-              ['Kalite',  `${qs}%`,       qColor],
-              ['Seri',    streak>=3?`${streak}🔥`:`${streak}`, 'var(--fire)'],
+              ['Bugün',  `${tp}%`,  'var(--text)'],
+              ['Ort.',   `${ap}%`,  'var(--text)'],
+              ['Kalite', `${qs}%`,  qColor],
+              ['Seri',   streak>=3?`${streak}🔥`:`${streak}`, 'var(--fire)'],
             ].map(([l,v,c])=>(
               <div key={l} style={{ background:'var(--surface)', padding:'10px 0', textAlign:'center' }}>
                 <div style={{ fontSize:9, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:3 }}>{l}</div>
@@ -541,34 +526,29 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
             ))}
           </div>
 
-          {/* ETA */}
           <div style={{ margin:'12px 16px 0', background:'var(--surface2)', borderRadius:'var(--r-md)', padding:'9px 13px', display:'flex', alignItems:'center', gap:8 }}>
             <span style={{ fontSize:13 }}>⏱</span>
             <span style={{ fontSize:12, color:eta.color }}>{eta.text}</span>
           </div>
 
-          {/* Streak banner */}
           {streak >= 3 && (
             <div style={{ margin:'10px 16px 0', background:'var(--fire-bg)', border:'1px solid rgba(251,146,60,0.25)', borderRadius:'var(--r-md)', padding:'9px 13px', display:'flex', alignItems:'center', gap:10 }}>
               <span style={{ fontSize:18 }}>🔥</span>
-              <div style={{ fontSize:14, fontWeight:700, color:'var(--fire)' }}>{streak} günlük seri! Devam et</div>
+              <div style={{ fontSize:14, fontWeight:700, color:'var(--fire)' }}>{streak} günlük seri!</div>
             </div>
           )}
 
-          {/* Badges */}
           <div style={{ display:'flex', flexWrap:'wrap', gap:5, padding:'10px 16px 0' }}>
             {BADGES.map(b => {
               const e = earned.has(b.id)
               return (
                 <div key={b.id} style={{ display:'flex', alignItems:'center', gap:4, padding:'4px 9px', borderRadius:99, background:e?'var(--accent-light)':'transparent', border:`1px solid ${e?'rgba(99,102,241,0.3)':'var(--border)'}`, opacity:e?1:0.3, fontSize:11 }}>
-                  <span>{b.icon}</span>
-                  <span style={{ fontWeight:e?500:400, color:e?'var(--text)':'var(--text3)' }}>{b.label}</span>
+                  <span>{b.icon}</span><span style={{ color:e?'var(--text)':'var(--text3)' }}>{b.label}</span>
                 </div>
               )
             })}
           </div>
 
-          {/* Tabs */}
           <div style={{ display:'flex', background:'var(--surface2)', borderRadius:'var(--r-md)', padding:3, margin:'12px 16px 0' }}>
             {[['tasks','Görevler'],['history','Geçmiş'],['chart','Grafik']].map(([t,l]) => (
               <button key={t} style={css.tab(tab===t)} onClick={()=>onTabChange(t)}>{l}</button>
@@ -577,144 +557,134 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
 
           <div style={{ padding:'12px 16px 16px' }}>
 
-      {/* TASKS */}
-      {tab==='tasks' && (
-        <div>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-            <span style={{ ...css.label }}>Bugünün Görevleri · {todayLogs.length}/{tasks.length}</span>
-            <button onClick={async()=>{ for(const l of todayLogs) await createClient().from('daily_logs').delete().eq('id',l.id) }} style={{ background:'none', border:'none', fontSize:12, color:'var(--text3)', cursor:'pointer' }}>Sıfırla</button>
-          </div>
-          <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
-            {tasks.map(t => {
-              const log = todayLogs.find(l=>l.task_id===t.id)
-              const q   = log?.quality
-              const qBg = { good:'var(--good-bg)', mid:'var(--mid-bg)', bad:'var(--bad-bg)' }
-              const qBorder = { good:'rgba(52,211,153,0.3)', mid:'rgba(251,191,36,0.3)', bad:'rgba(248,113,113,0.3)' }
-              return (
-                <div key={t.id} style={{ background: q?qBg[q]:'var(--surface2)', border:`1px solid ${q?qBorder[q]:'var(--border)'}`, borderRadius:'var(--r-md)', overflow:'hidden' }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', cursor:'pointer' }} onClick={()=>onToggleTask(t.id)}>
-                    <div style={{ width:22, height:22, borderRadius:6, border:`2px solid ${q?`var(--${q})`:'var(--border2)'}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, flexShrink:0, background:q?qBg[q]:'transparent', color:`var(--${q||'text3'})`, fontWeight:700 }}>
-                      {q ? QSym[q] : ''}
-                    </div>
-                    <div style={{ flex:1, fontSize:14, textDecoration:q?'line-through':'none', color:q?'var(--text3)':'var(--text)' }}>{t.name}</div>
-                    {q && <span style={{ fontSize:11, fontWeight:600, color:`var(--${q})`, background:qBg[q], padding:'2px 8px', borderRadius:99 }}>{QLabel[q]}</span>}
-                  </div>
-                  {q && (
-                    <div style={{ display:'flex', gap:6, padding:'0 14px 12px' }}>
-                      {['good','mid','bad'].map(qv => (
-                        <button key={qv} onClick={()=>onSetQuality(t.id,qv)} style={{ flex:1, padding:'7px 4px', borderRadius:'var(--r-sm)', border:`1.5px solid ${q===qv?`var(--${qv})`:'var(--border)'}`, background:q===qv?qBg[qv]:'transparent', color:q===qv?`var(--${qv})`:'var(--text3)', fontSize:12, fontWeight:600, cursor:'pointer' }}>
-                          {QLabel[qv]}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+            {tab==='tasks' && (
+              <div>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
+                  <span style={{ ...css.label }}>Bugünün Görevleri · {todayLogs.length}/{tasks.length}</span>
+                  <button onClick={async()=>{ for(const l of todayLogs) await createClient().from('daily_logs').delete().eq('id',l.id) }} style={{ background:'none', border:'none', fontSize:12, color:'var(--text3)', cursor:'pointer' }}>Sıfırla</button>
                 </div>
-              )
-            })}
-          </div>
-          <NoteSection goalId={goal.id} ds={today} notes={notes} noteInputs={noteInputs} onNoteChange={onNoteChange} onSaveNote={onSaveNote} />
-
-          {/* Quality breakdown */}
-          {logs.length > 0 && (
-            <div style={{ marginTop:16 }}>
-              <div style={{ ...css.label, marginBottom:8 }}>Toplam Kalite Dağılımı</div>
-              <div style={{ display:'flex', gap:12, fontSize:13, marginBottom:8 }}>
-                <span style={{ color:'var(--good)' }}>✓ İyi: {logs.filter(l=>l.quality==='good').length}</span>
-                <span style={{ color:'var(--mid)' }}>− Orta: {logs.filter(l=>l.quality==='mid').length}</span>
-                <span style={{ color:'var(--bad)' }}>✕ Kötü: {logs.filter(l=>l.quality==='bad').length}</span>
-              </div>
-              <QBar logs={logs} />
-            </div>
-          )}
-        </div>
-      )}
-
-        {/* HISTORY */}
-      {tab==='history' && (
-        <div>
-          <div style={{ ...css.label, marginBottom:10 }}>Son 14 Gün</div>
-          {histDays.length===0 && <div style={{ textAlign:'center', padding:20, color:'var(--text3)', fontSize:13 }}>Henüz geçmiş gün yok</div>}
-          {histDays.map(({ds,d}) => {
-            const sc     = Math.round(dayScore(tasks,logs,ds)*100)
-            const key    = `${goal.id}:${ds}`
-            const isOpen = !!openHist[key]
-            const dayLogs= logs.filter(l=>l.log_date===ds)
-            const scColor= sc>=70?'var(--good)':sc>=30?'var(--mid)':'var(--text3)'
-            const note   = notes[key]||''
-            return (
-              <div key={ds} style={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:'var(--r-md)', marginBottom:8, overflow:'hidden' }}>
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 14px', cursor:'pointer' }} onClick={()=>onToggleHist(key)}>
-                  <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:13 }}>
-                    <span style={{ color:'var(--text3)', fontSize:11 }}>{isOpen?'▾':'▸'}</span>
-                    <span>{DAYS[d.getDay()]}, {d.getDate()} {MONTHS[d.getMonth()]}</span>
-                    {note && <span style={{ fontSize:11, color:'var(--accent)' }}>📝</span>}
-                  </div>
-                  <span style={{ fontSize:13, fontWeight:600, color:scColor }}>{sc>0?`${sc}%`:'—'}</span>
-                </div>
-                {isOpen && (
-                  <div style={{ padding:'0 14px 14px', borderTop:'1px solid var(--border)' }}>
-                    {tasks.map(t => {
-                      const log = dayLogs.find(l=>l.task_id===t.id)
-                      const q   = log?.quality||null
-                      return (
-                        <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
-                          <div style={{ flex:1, fontSize:13 }}>{t.name}</div>
-                          <div style={{ display:'flex', gap:4 }}>
-                            {['good','mid','bad'].map(qv=>(
-                              <button key={qv} onClick={()=>onSetQuality(t.id,qv,ds)} style={{ padding:'4px 10px', borderRadius:'var(--r-sm)', border:`1px solid ${q===qv?`var(--${qv})`:'var(--border)'}`, background:q===qv?{ good:'var(--good-bg)', mid:'var(--mid-bg)', bad:'var(--bad-bg)' }[qv]:'transparent', color:q===qv?`var(--${qv})`:'var(--text3)', fontSize:11, fontWeight:500, cursor:'pointer' }}>
-                                {QLabel[qv]}
-                              </button>
-                            ))}
-                            <button onClick={()=>onRemoveLog(t.id,ds)} style={{ padding:'4px 8px', borderRadius:'var(--r-sm)', border:'1px solid var(--border)', background:'transparent', color:'var(--text3)', fontSize:11, cursor:'pointer' }}>—</button>
-                          </div>
+                <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
+                  {tasks.map(t => {
+                    const log = todayLogs.find(l=>l.task_id===t.id)
+                    const q   = log?.quality
+                    const qBg = { good:'var(--good-bg)', mid:'var(--mid-bg)', bad:'var(--bad-bg)' }
+                    const qBorder = { good:'rgba(52,211,153,0.3)', mid:'rgba(251,191,36,0.3)', bad:'rgba(248,113,113,0.3)' }
+                    return (
+                      <div key={t.id} style={{ background:q?qBg[q]:'var(--surface2)', border:`1px solid ${q?qBorder[q]:'var(--border)'}`, borderRadius:'var(--r-md)', overflow:'hidden' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', cursor:'pointer' }} onClick={()=>onToggleTask(t.id)}>
+                          <div style={{ width:22, height:22, borderRadius:6, border:`2px solid ${q?`var(--${q})`:'var(--border2)'}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, flexShrink:0, background:q?qBg[q]:'transparent', color:`var(--${q||'text3'})`, fontWeight:700 }}>{q ? QSym[q] : ''}</div>
+                          <div style={{ flex:1, fontSize:14, textDecoration:q?'line-through':'none', color:q?'var(--text3)':'var(--text)' }}>{t.name}</div>
+                          {q && <span style={{ fontSize:11, fontWeight:600, color:`var(--${q})`, background:qBg[q], padding:'2px 8px', borderRadius:99 }}>{QLabel[q]}</span>}
                         </div>
-                      )
-                    })}
-                    <NoteSection goalId={goal.id} ds={ds} notes={notes} noteInputs={noteInputs} onNoteChange={onNoteChange} onSaveNote={onSaveNote} />
+                        {q && (
+                          <div style={{ display:'flex', gap:6, padding:'0 14px 12px' }}>
+                            {['good','mid','bad'].map(qv => (
+                              <button key={qv} onClick={()=>onSetQuality(t.id,qv)} style={{ flex:1, padding:'7px 4px', borderRadius:'var(--r-sm)', border:`1.5px solid ${q===qv?`var(--${qv})`:'var(--border)'}`, background:q===qv?qBg[qv]:'transparent', color:q===qv?`var(--${qv})`:'var(--text3)', fontSize:12, fontWeight:600, cursor:'pointer' }}>{QLabel[qv]}</button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+                <NoteSection goalId={goal.id} ds={today} notes={notes} noteInputs={noteInputs} onNoteChange={onNoteChange} onSaveNote={onSaveNote} />
+                {logs.length > 0 && (
+                  <div style={{ marginTop:16 }}>
+                    <div style={{ ...css.label, marginBottom:8 }}>Toplam Kalite Dağılımı</div>
+                    <div style={{ display:'flex', gap:12, fontSize:13, marginBottom:8 }}>
+                      <span style={{ color:'var(--good)' }}>✓ İyi: {logs.filter(l=>l.quality==='good').length}</span>
+                      <span style={{ color:'var(--mid)' }}>− Orta: {logs.filter(l=>l.quality==='mid').length}</span>
+                      <span style={{ color:'var(--bad)' }}>✕ Kötü: {logs.filter(l=>l.quality==='bad').length}</span>
+                    </div>
+                    <QBar logs={logs} />
                   </div>
                 )}
               </div>
-            )
-          })}
-        </div>
-      )}
+            )}
 
-      {/* CHART */}
-      {tab==='chart' && (
-        <div>
-          <div style={{ ...css.label, marginBottom:12 }}>Son 14 Gün</div>
-          <div style={{ display:'flex', alignItems:'flex-end', gap:4, height:100, marginBottom:8 }}>
-            {chartDays.map(({ds,c,isToday,label,good,mid,bad})=>{
-              const totalH=90, hasAny=good+mid+bad>0
-              const gH=Math.round((good/n)*totalH), mH=Math.round((mid/n)*totalH), bH=Math.round((bad/n)*totalH)
-              return (
-                <div key={ds} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-end', height:'100%', gap:2 }}>
-                  <div style={{ width:'100%', display:'flex', flexDirection:'column-reverse', borderRadius:'4px 4px 0 0', overflow:'hidden', minHeight:hasAny?Math.max(gH+mH+bH,4):3 }}>
-                    {good>0 && <div style={{ height:gH, background:'var(--good)', opacity:0.8 }} />}
-                    {mid >0 && <div style={{ height:mH, background:'var(--mid)',  opacity:0.8 }} />}
-                    {bad >0 && <div style={{ height:bH, background:'var(--bad)',  opacity:0.8 }} />}
-                    {!hasAny && <div style={{ height:3, background:'var(--border)' }} />}
-                  </div>
-                  {label && <div style={{ fontSize:9, color:isToday?'var(--accent)':'var(--text3)', marginTop:4, textAlign:'center' }}>{label}</div>}
-                </div>
-              )
-            })}
-          </div>
-          <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
-            {[['var(--good)','İyi'],['var(--mid)','Orta'],['var(--bad)','Kötü'],['var(--border)','Yapılmadı']].map(([c,l])=>(
-              <div key={l} style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:'var(--text3)' }}>
-                <div style={{ width:8, height:8, borderRadius:'50%', background:c }} />{l}
+            {tab==='history' && (
+              <div>
+                <div style={{ ...css.label, marginBottom:10 }}>Son 14 Gün</div>
+                {histDays.length===0 && <div style={{ textAlign:'center', padding:20, color:'var(--text3)', fontSize:13 }}>Henüz geçmiş gün yok</div>}
+                {histDays.map(({ds,d}) => {
+                  const sc      = Math.round(dayScore(tasks,logs,ds)*100)
+                  const hkey    = `${goal.id}:${ds}`
+                  const hIsOpen = !!openHist[hkey]
+                  const dayLogs = logs.filter(l=>l.log_date===ds)
+                  const scColor = sc>=70?'var(--good)':sc>=30?'var(--mid)':'var(--text3)'
+                  const note    = notes[hkey]||''
+                  return (
+                    <div key={ds} style={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:'var(--r-md)', marginBottom:8, overflow:'hidden' }}>
+                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 14px', cursor:'pointer' }} onClick={()=>onToggleHist(hkey)}>
+                        <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:13 }}>
+                          <span style={{ color:'var(--text3)', fontSize:11 }}>{hIsOpen?'▾':'▸'}</span>
+                          <span>{DAYS[d.getDay()]}, {d.getDate()} {MONTHS[d.getMonth()]}</span>
+                          {note && <span style={{ fontSize:11, color:'var(--accent)' }}>📝</span>}
+                        </div>
+                        <span style={{ fontSize:13, fontWeight:600, color:scColor }}>{sc>0?`${sc}%`:'—'}</span>
+                      </div>
+                      {hIsOpen && (
+                        <div style={{ padding:'0 14px 14px', borderTop:'1px solid var(--border)' }}>
+                          {tasks.map(t => {
+                            const log = dayLogs.find(l=>l.task_id===t.id)
+                            const q   = log?.quality||null
+                            return (
+                              <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
+                                <div style={{ flex:1, fontSize:13 }}>{t.name}</div>
+                                <div style={{ display:'flex', gap:4 }}>
+                                  {['good','mid','bad'].map(qv=>(
+                                    <button key={qv} onClick={()=>onSetQuality(t.id,qv,ds)} style={{ padding:'4px 10px', borderRadius:'var(--r-sm)', border:`1px solid ${q===qv?`var(--${qv})`:'var(--border)'}`, background:q===qv?{ good:'var(--good-bg)', mid:'var(--mid-bg)', bad:'var(--bad-bg)' }[qv]:'transparent', color:q===qv?`var(--${qv})`:'var(--text3)', fontSize:11, fontWeight:500, cursor:'pointer' }}>{QLabel[qv]}</button>
+                                  ))}
+                                  <button onClick={()=>onRemoveLog(t.id,ds)} style={{ padding:'4px 8px', borderRadius:'var(--r-sm)', border:'1px solid var(--border)', background:'transparent', color:'var(--text3)', fontSize:11, cursor:'pointer' }}>—</button>
+                                </div>
+                              </div>
+                            )
+                          })}
+                          <NoteSection goalId={goal.id} ds={ds} notes={notes} noteInputs={noteInputs} onNoteChange={onNoteChange} onSaveNote={onSaveNote} />
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
-            ))}
+            )}
+
+            {tab==='chart' && (
+              <div>
+                <div style={{ ...css.label, marginBottom:12 }}>Son 14 Gün</div>
+                <div style={{ display:'flex', alignItems:'flex-end', gap:4, height:100, marginBottom:8 }}>
+                  {chartDays.map(({ds,isToday,label,good,mid,bad})=>{
+                    const totalH=90, hasAny=good+mid+bad>0
+                    const gH=Math.round((good/n)*totalH), mH=Math.round((mid/n)*totalH), bH=Math.round((bad/n)*totalH)
+                    return (
+                      <div key={ds} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'flex-end', height:'100%', gap:2 }}>
+                        <div style={{ width:'100%', display:'flex', flexDirection:'column-reverse', borderRadius:'4px 4px 0 0', overflow:'hidden', minHeight:hasAny?Math.max(gH+mH+bH,4):3 }}>
+                          {good>0 && <div style={{ height:gH, background:'var(--good)', opacity:0.8 }} />}
+                          {mid >0 && <div style={{ height:mH, background:'var(--mid)',  opacity:0.8 }} />}
+                          {bad >0 && <div style={{ height:bH, background:'var(--bad)',  opacity:0.8 }} />}
+                          {!hasAny && <div style={{ height:3, background:'var(--border)' }} />}
+                        </div>
+                        {label && <div style={{ fontSize:9, color:isToday?'var(--accent)':'var(--text3)', marginTop:4, textAlign:'center' }}>{label}</div>}
+                      </div>
+                    )
+                  })}
+                </div>
+                <div style={{ display:'flex', gap:12, flexWrap:'wrap' }}>
+                  {[['var(--good)','İyi'],['var(--mid)','Orta'],['var(--bad)','Kötü'],['var(--border)','Yapılmadı']].map(([c,l])=>(
+                    <div key={l} style={{ display:'flex', alignItems:'center', gap:5, fontSize:11, color:'var(--text3)' }}>
+                      <div style={{ width:8, height:8, borderRadius:'50%', background:c }} />{l}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
-      )}
-          </div>  {/* padding div */}
-        </div>   {/* expanded detail */}
       )}
     </div>
   )
-} 
+}
 
 /* ─── Quality Bar ────────────────────────────────────────────────────────── */
 function QBar({ logs }) {
