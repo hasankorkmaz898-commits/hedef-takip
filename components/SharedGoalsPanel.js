@@ -1,40 +1,37 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createClient } from '../lib/supabase'
 
-/* ─── Helpers ─────────────────────────────────────────────────────────── */
 const Q    = { good:1.0, mid:0.6, bad:0.3 }
 const QSym = { good:'✓', mid:'−', bad:'✕' }
 const QL   = { good:'İyi', mid:'Orta', bad:'Kötü' }
 const toDate   = d => d.toISOString().slice(0,10)
 const todayStr = () => toDate(new Date())
 const addDays  = (ds,n) => { const d=new Date(ds); d.setDate(d.getDate()+n); return toDate(d) }
-const elapsed  = s => Math.max(0, Math.floor((new Date()-new Date(s))/86400000))
+const elapsed  = s => Math.max(0,Math.floor((new Date()-new Date(s))/86400000))
 const initials = n => (n||'?').split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase()
 
-function memberDayScore(tasks, logs, ds, uid) {
+function memberDayScore(tasks,logs,ds,uid) {
   if (!tasks.length) return 0
-  const dl = logs.filter(l=>l.log_date===ds && l.user_id===uid)
-  return tasks.reduce((s,t)=>{ const l=dl.find(x=>x.task_id===t.id); return s+(l?Q[l.quality]:0) },0)/tasks.length
+  const dl=logs.filter(l=>l.log_date===ds&&l.user_id===uid)
+  return tasks.reduce((s,t)=>{const l=dl.find(x=>x.task_id===t.id);return s+(l?Q[l.quality]:0)},0)/tasks.length
 }
-function memberOverallScore(tasks, logs, startDate, totalDays, uid) {
-  const e=elapsed(startDate); if (!e) return 0
-  let sum=0
-  for (let i=0;i<e;i++) sum+=memberDayScore(tasks,logs,addDays(startDate,i),uid)
-  return sum/totalDays
+function memberOverall(tasks,logs,start,total,uid) {
+  const e=elapsed(start); if (!e) return 0
+  let s=0; for(let i=0;i<e;i++) s+=memberDayScore(tasks,logs,addDays(start,i),uid)
+  return s/total
 }
-function combinedDayScore(mTaskMap, logs, ds, memberIds) {
-  if (!memberIds.length) return 0
-  return memberIds.reduce((s,uid)=>s+memberDayScore(mTaskMap[uid]||[],logs,ds,uid),0)/memberIds.length
+function combinedDay(mTaskMap,logs,ds,ids) {
+  if (!ids.length) return 0
+  return ids.reduce((s,uid)=>s+memberDayScore(mTaskMap[uid]||[],logs,ds,uid),0)/ids.length
 }
-function combinedStreak(mTaskMap, logs, startDate, memberIds) {
-  let streak=0
-  for (let i=elapsed(startDate)-1;i>=0;i--) {
-    if (combinedDayScore(mTaskMap,logs,addDays(startDate,i),memberIds)>=0.5) streak++; else break
+function streak(mTaskMap,logs,start,ids) {
+  let n=0
+  for(let i=elapsed(start)-1;i>=0;i--) {
+    if(combinedDay(mTaskMap,logs,addDays(start,i),ids)>=0.5) n++; else break
   }
-  return streak
+  return n
 }
 
-/* ─── Styles ──────────────────────────────────────────────────────────── */
 const S = {
   overlay:{ position:'fixed',inset:0,background:'rgba(10,12,18,0.75)',backdropFilter:'blur(4px)',zIndex:300 },
   panel:  { position:'fixed',inset:0,background:'#111318',zIndex:301,overflowY:'auto',maxWidth:480,margin:'0 auto' },
@@ -52,9 +49,9 @@ const S = {
 
 export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
   const [goals,          setGoals]        = useState([])
-  const [memberTasks,    setMemberTasks]  = useState({})   // goalId → { uid → [task] }
-  const [logs,           setLogs]         = useState({})   // goalId → [log]
-  const [members,        setMembers]      = useState({})   // goalId → [{user_id,profiles}]
+  const [memberTasks,    setMemberTasks]  = useState({})
+  const [logs,           setLogs]         = useState({})
+  const [members,        setMembers]      = useState({})
   const [profiles,       setProfiles]     = useState({})
   const [invitations,    setInvitations]  = useState([])
   const [friends,        setFriends]      = useState([])
@@ -68,44 +65,81 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
   const [newDays,        setNewDays]      = useState('')
   const [deleteConfirm,  setDeleteConfirm]= useState(null)
   const [leaveConfirm,   setLeaveConfirm] = useState(null)
-  const [liveIndicator,  setLiveIndicator]= useState({}) // goalId → bool (flash)
-  const channelsRef = useRef([])
+  const [liveFlash,      setLiveFlash]    = useState({})
+
+  // Ref'ler — realtime closure için güncel state
+  const memberTasksRef = useRef({})
+  const membersRef     = useRef({})
+  const channelsRef    = useRef([])
   const supabase = createClient()
+
+  // Ref'leri state ile senkron tut
+  useEffect(() => { memberTasksRef.current = memberTasks }, [memberTasks])
+  useEffect(() => { membersRef.current = members }, [members])
 
   useEffect(() => { loadAll() }, [])
 
-  // Gerçek zamanlı dinleme — goals yüklenince
+  // Realtime — goals değişince kanalları yenile
   useEffect(() => {
     if (!goals.length) return
-    // Önceki kanalları temizle
-    channelsRef.current.forEach(c=>supabase.removeChannel(c))
+    channelsRef.current.forEach(c => supabase.removeChannel(c))
     channelsRef.current = []
 
-    goals.forEach(goal => {
-      // shared_logs değişimlerini dinle
-      const ch = supabase.channel(`shared_logs_${goal.id}`)
-        .on('postgres_changes', {
-          event: '*', schema: 'public', table: 'shared_logs'
-        }, async (payload) => {
-          // Hangi goal'a ait olduğunu bul (task_id'den)
-          await reloadLogsForGoal(goal.id)
-          // Canlı gösterge flash
-          setLiveIndicator(p=>({...p,[goal.id]:true}))
-          setTimeout(()=>setLiveIndicator(p=>({...p,[goal.id]:false})),1500)
-        })
-        .on('postgres_changes', {
-          event: '*', schema: 'public', table: 'shared_member_tasks'
-        }, async () => {
-          await reloadMemberTasksForGoal(goal.id)
-        })
-        .subscribe()
-      channelsRef.current.push(ch)
-    })
+    // Tek kanal — tüm değişimleri dinle
+    const ch = supabase.channel('shared_realtime_' + user.id)
+      .on('postgres_changes', { event:'*', schema:'public', table:'shared_logs' },
+        async () => {
+          // Tüm aktif goalların loglarını yenile
+          for (const goal of goals) {
+            await fetchLogsForGoal(goal.id)
+          }
+          // Canlı flash
+          const flash = {}
+          goals.forEach(g => flash[g.id] = true)
+          setLiveFlash(flash)
+          setTimeout(() => setLiveFlash({}), 1500)
+        }
+      )
+      .on('postgres_changes', { event:'*', schema:'public', table:'shared_member_tasks' },
+        async () => {
+          for (const goal of goals) {
+            await fetchMemberTasksForGoal(goal.id)
+          }
+        }
+      )
+      .subscribe()
+    channelsRef.current = [ch]
 
-    return () => {
-      channelsRef.current.forEach(c=>supabase.removeChannel(c))
-    }
+    return () => { supabase.removeChannel(ch) }
   }, [goals.map(g=>g.id).join(',')])
+
+  // Yardımcı: bir goal için logları çek ve state'e yaz
+  async function fetchLogsForGoal(goalId) {
+    const mt = memberTasksRef.current[goalId] || {}
+    const allTIds = Object.values(mt).flat().map(t=>t.id)
+    if (!allTIds.length) return
+    const { data:l } = await supabase.from('shared_logs').select('*').in('task_id', allTIds)
+    setLogs(prev => ({ ...prev, [goalId]: l||[] }))
+  }
+
+  // Yardımcı: bir goal için üye görevlerini çek
+  async function fetchMemberTasksForGoal(goalId) {
+    const memberIds = (membersRef.current[goalId]||[]).map(m=>m.user_id)
+    const tasksByUser = {}
+    for (const uid of memberIds) {
+      const { data:t } = await supabase.from('shared_member_tasks')
+        .select('*').eq('goal_id',goalId).eq('user_id',uid).order('order_index')
+      tasksByUser[uid] = t||[]
+    }
+    memberTasksRef.current = { ...memberTasksRef.current, [goalId]: tasksByUser }
+    setMemberTasks(prev => ({ ...prev, [goalId]: tasksByUser }))
+    // Logları da güncelle
+    const allTIds = Object.values(tasksByUser).flat().map(t=>t.id)
+    if (allTIds.length) {
+      const { data:l } = await supabase.from('shared_logs').select('*').in('task_id',allTIds)
+      setLogs(prev => ({ ...prev, [goalId]: l||[] }))
+    }
+  }
 
   async function loadAll() {
     // Arkadaşlar
@@ -124,7 +158,7 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
     `).eq('invitee_id',user.id).eq('status','pending')
     setInvitations(invs||[])
 
-    // Hedefler
+    // Hedefler — üye olduğun veya oluşturduğun
     const { data:mr } = await supabase.from('shared_goal_members').select('goal_id').eq('user_id',user.id)
     const { data:cg } = await supabase.from('shared_goals').select('*').eq('created_by',user.id)
     const allIds = [...new Set([...(mr||[]).map(r=>r.goal_id),...(cg||[]).map(g=>g.id)])]
@@ -135,10 +169,12 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
 
     const mtMap={}, lMap={}, mMap={}
     for (const g of (allGoals||[])) {
+      // Tüm üyeler
       const { data:m } = await supabase.from('shared_goal_members')
         .select(`user_id, profiles(id,display_name,avatar_url,user_code)`).eq('goal_id',g.id)
       mMap[g.id] = m||[]
 
+      // Her üyenin görevleri (üye olup olmadığından bağımsız — RLS: select true)
       const memberIds = (m||[]).map(x=>x.user_id)
       const tasksByUser = {}
       for (const uid of memberIds) {
@@ -148,15 +184,16 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
       }
       mtMap[g.id] = tasksByUser
 
+      // Tüm loglar
       const allTIds = Object.values(tasksByUser).flat().map(t=>t.id)
       if (allTIds.length) {
         const { data:l } = await supabase.from('shared_logs').select('*').in('task_id',allTIds)
         lMap[g.id] = l||[]
       } else { lMap[g.id] = [] }
     }
-    setMemberTasks(mtMap); setLogs(lMap); setMembers(mMap)
 
-    const pIds=new Set()
+    // Profiller
+    const pIds = new Set()
     Object.values(mMap).flat().forEach(m=>pIds.add(m.user_id))
     allGoals?.forEach(g=>pIds.add(g.created_by))
     if (pIds.size) {
@@ -164,73 +201,44 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
       const pm={}; (profs||[]).forEach(p=>pm[p.id]=p)
       setProfiles(pm)
     }
+
+    setMemberTasks(mtMap); setLogs(lMap); setMembers(mMap)
+    memberTasksRef.current = mtMap
+    membersRef.current = mMap
   }
 
-  // Sadece logları yenile
-  async function reloadLogsForGoal(goalId) {
-    const allTIds = Object.values(memberTasks[goalId]||{}).flat().map(t=>t.id)
-    if (!allTIds.length) return
-    const { data:l } = await supabase.from('shared_logs').select('*').in('task_id', allTIds)
-    setLogs(prev=>({...prev,[goalId]:l||[]}))
-  }
-
-  // Görevleri yenile (realtime tetikler)
-  async function reloadMemberTasksForGoal(goalId) {
-    const memberIds = (members[goalId]||[]).map(m=>m.user_id)
-    const tasksByUser={}
-    for (const uid of memberIds) {
-      const { data:t } = await supabase.from('shared_member_tasks')
-        .select('*').eq('goal_id',goalId).eq('user_id',uid).order('order_index')
-      tasksByUser[uid] = t||[]
-    }
-    setMemberTasks(prev=>({...prev,[goalId]:tasksByUser}))
-    const allTIds = Object.values(tasksByUser).flat().map(t=>t.id)
-    if (allTIds.length) {
-      const { data:l } = await supabase.from('shared_logs').select('*').in('task_id',allTIds)
-      setLogs(prev=>({...prev,[goalId]:l||[]}))
-    }
-  }
-
-  /* Görev toggle — task_owner_id olmadan da çalışsın */
   async function toggleTask(goalId, taskId) {
     const ds=todayStr()
-    const gl = logs[goalId]||[]
-    const ex = gl.find(l=>l.task_id===taskId && l.log_date===ds && l.user_id===user.id)
+    const gl=logs[goalId]||[]
+    const ex=gl.find(l=>l.task_id===taskId&&l.log_date===ds&&l.user_id===user.id)
     if (ex) {
-      await supabase.from('shared_logs').delete().eq('id',ex.id)
+      const { error } = await supabase.from('shared_logs').delete().eq('id',ex.id)
+      if (error) { alert('Hata: '+error.message); return }
     } else {
-      const { error } = await supabase.from('shared_logs').insert({
-        task_id:taskId, log_date:ds, quality:'good', user_id:user.id
-      })
-      if (error) { console.error('Toggle error:', error); alert('Hata: '+error.message); return }
+      const { error } = await supabase.from('shared_logs').insert({ task_id:taskId, log_date:ds, quality:'good', user_id:user.id })
+      if (error) { alert('Hata: '+error.message); return }
     }
-    await reloadLogsForGoal(goalId)
+    await fetchLogsForGoal(goalId)
   }
 
   async function setQuality(goalId, taskId, quality) {
     const ds=todayStr()
-    const ex=(logs[goalId]||[]).find(l=>l.task_id===taskId && l.log_date===ds && l.user_id===user.id)
-    if (ex) {
-      await supabase.from('shared_logs').update({quality}).eq('id',ex.id)
-    } else {
-      await supabase.from('shared_logs').insert({ task_id:taskId, log_date:ds, quality, user_id:user.id })
-    }
-    await reloadLogsForGoal(goalId)
+    const ex=(logs[goalId]||[]).find(l=>l.task_id===taskId&&l.log_date===ds&&l.user_id===user.id)
+    if (ex) await supabase.from('shared_logs').update({quality}).eq('id',ex.id)
+    else     await supabase.from('shared_logs').insert({ task_id:taskId, log_date:ds, quality, user_id:user.id })
+    await fetchLogsForGoal(goalId)
   }
 
-  /* Görev düzenleme */
   function startEditTasks(goalId) {
     const myT=(memberTasks[goalId]||{})[user.id]||[]
-    setEditTaskList(myT.length ? myT.map(t=>({...t})) : [{name:''}])
+    setEditTaskList(myT.length?myT.map(t=>({...t})):[{name:''}])
     setEditingTasks(goalId)
   }
 
   async function saveMyTasks(goalId) {
     const filtered=editTaskList.filter(t=>t.name?.trim())
     const myT=(memberTasks[goalId]||{})[user.id]||[]
-    // Mevcut görevleri sil
     for (const t of myT) await supabase.from('shared_member_tasks').delete().eq('id',t.id)
-    // Yenilerini ekle
     if (filtered.length) {
       const { error } = await supabase.from('shared_member_tasks').insert(
         filtered.map((t,i)=>({ goal_id:goalId, user_id:user.id, name:t.name.trim(), order_index:i }))
@@ -238,10 +246,9 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
       if (error) { alert('Görev kaydedilemedi: '+error.message); return }
     }
     setEditingTasks(null)
-    await reloadMemberTasksForGoal(goalId)
+    await fetchMemberTasksForGoal(goalId)
   }
 
-  /* Davetler */
   async function acceptInvitation(inv) {
     const { error } = await supabase.from('shared_goal_members').insert({ goal_id:inv.goal_id, user_id:user.id })
     if (error) { alert('Kabul edilemedi: '+error.message); return }
@@ -253,13 +260,12 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
     setInvitations(p=>p.filter(i=>i.id!==inv.id))
   }
 
-  /* Oluştur */
   async function createSharedGoal() {
     if (!newName.trim()||!newDays||!selectedFriend) { alert('Lütfen tüm alanları doldur'); return }
     const { data:g, error:gErr } = await supabase.from('shared_goals').insert({
       name:newName.trim(), total_days:parseInt(newDays), start_date:todayStr(), created_by:user.id
     }).select().single()
-    if (gErr||!g) { alert('Hedef oluşturulamadı: '+(gErr?.message||'hata')); return }
+    if (gErr||!g) { alert('Oluşturulamadı: '+(gErr?.message||'hata')); return }
     await supabase.from('shared_goal_members').insert({ goal_id:g.id, user_id:user.id })
     const { error:invErr } = await supabase.from('shared_goal_invitations').insert({
       goal_id:g.id, inviter_id:user.id, invitee_id:selectedFriend.id
@@ -278,16 +284,14 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
     setLeaveConfirm(null); await loadAll()
   }
 
-  const tab=(gid)=>activeTab[gid]||'mine'
-  const setTab=(gid,t)=>setActiveTab(p=>({...p,[gid]:t}))
+  const tab = gid => activeTab[gid]||'mine'
+  const setTab = (gid,t) => setActiveTab(p=>({...p,[gid]:t}))
 
-  /* ─── Render ─────────────────────────────────────────────────────────── */
   return (
     <>
       <div style={S.overlay} onClick={onClose}/>
       <div style={S.panel}>
 
-        {/* Header */}
         <div style={S.hdr}>
           <button onClick={onClose} style={{ width:32,height:32,background:'#1c1f26',border:'1px solid #2e3340',borderRadius:8,color:'#9aa0b0',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center' }}>←</button>
           <div style={{ flex:1 }}>
@@ -299,7 +303,6 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
 
         <div style={{ padding:'14px 16px' }}>
 
-          {/* Davetler */}
           {invitations.length>0&&(
             <div style={{ background:'rgba(99,102,241,0.07)',border:'1px solid rgba(99,102,241,0.25)',borderRadius:14,padding:14,marginBottom:14 }}>
               <div style={{ fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',color:'#6366f1',marginBottom:10 }}>📨 Ortak Hedef Daveti</div>
@@ -316,7 +319,6 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
             </div>
           )}
 
-          {/* Create form */}
           {showCreate&&(
             <div style={{ background:'#1c1f26',border:'1px solid rgba(99,102,241,0.35)',borderRadius:16,padding:18,marginBottom:16 }}>
               <div style={{ fontSize:15,fontWeight:600,color:'#e2e6f0',marginBottom:14 }}>Yeni Ortak Hedef</div>
@@ -343,7 +345,7 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
                 <input type="number" style={S.input} placeholder="örn: 30" value={newDays} onChange={e=>setNewDays(e.target.value)}/>
               </div>
               <div style={{ background:'rgba(99,102,241,0.07)',border:'1px solid rgba(99,102,241,0.2)',borderRadius:8,padding:'9px 12px',marginBottom:12,fontSize:12,color:'#a5b4fc' }}>
-                💡 Katıldıktan sonra herkes kendi görevlerini ekler. Hedef ortak, görevler kişisel!
+                💡 Katıldıktan sonra herkes kendi görevlerini ekler.
               </div>
               <div style={{ display:'flex',gap:9 }}>
                 <button onClick={()=>setShowCreate(false)} style={S.btn('secondary')}>İptal</button>
@@ -352,7 +354,6 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
             </div>
           )}
 
-          {/* Empty */}
           {goals.length===0&&!showCreate&&invitations.length===0&&(
             <div style={{ textAlign:'center',padding:'50px 20px',color:'#5c6475' }}>
               <div style={{ fontSize:36,marginBottom:10 }}>🤝</div>
@@ -361,7 +362,6 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
             </div>
           )}
 
-          {/* ─── Goal Cards ─── */}
           {goals.map(goal=>{
             const glogs    = logs[goal.id]||[]
             const gmembers = members[goal.id]||[]
@@ -374,32 +374,31 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
             const isOpen   = expandedGoal===goal.id
             const myTasks  = mTaskMap[user.id]||[]
             const partnerIds = memberIds.filter(id=>id!==user.id)
-            const isLive   = liveIndicator[goal.id]
+            const isLive   = liveFlash[goal.id]
 
-            const combinedToday = Math.round(combinedDayScore(mTaskMap,glogs,today,memberIds)*100)
-            const streak        = combinedStreak(mTaskMap,glogs,goal.start_date,memberIds)
+            const combinedToday = Math.round(combinedDay(mTaskMap,glogs,today,memberIds)*100)
+            const str           = streak(mTaskMap,glogs,goal.start_date,memberIds)
             const progPct       = el===0?0:Math.round(
-              memberIds.reduce((s,uid)=>s+memberOverallScore(mTaskMap[uid]||[],glogs,goal.start_date,goal.total_days,uid),0)
+              memberIds.reduce((s,uid)=>s+memberOverall(mTaskMap[uid]||[],glogs,goal.start_date,goal.total_days,uid),0)
               /Math.max(1,memberIds.length)*100
             )
-            const allLogs      = glogs.filter(l=>memberIds.includes(l.user_id))
+            const allLogs      = glogs
             const qualityScore = allLogs.length
-              ? Math.round(allLogs.reduce((s,l)=>s+Q[l.quality],0)/allLogs.length*100) : 0
-
-            const myLogs     = glogs.filter(l=>l.log_date===today&&l.user_id===user.id)
-            const myDoneCount= myTasks.filter(t=>myLogs.find(l=>l.task_id===t.id)).length
+              ? Math.round(allLogs.reduce((s,l)=>s+Q[l.quality],0)/allLogs.length*100):0
+            const myLogs      = glogs.filter(l=>l.log_date===today&&l.user_id===user.id)
+            const myDoneCount = myTasks.filter(t=>myLogs.find(l=>l.task_id===t.id)).length
 
             return (
               <div key={goal.id} style={{ background:'#1c1f26',border:`1px solid ${isOpen?'rgba(99,102,241,0.4)':'#2e3340'}`,borderRadius:16,marginBottom:10,overflow:'hidden' }}>
 
-                {/* ── Collapsed header ── */}
+                {/* Başlık */}
                 <div onClick={()=>setExpandedGoal(isOpen?null:goal.id)} style={{ padding:'14px 16px',cursor:'pointer',userSelect:'none' }}>
                   <div style={{ display:'flex',alignItems:'center',gap:10 }}>
                     <div style={{ flex:1 }}>
                       <div style={{ display:'flex',alignItems:'center',gap:7,marginBottom:5 }}>
                         <span style={{ fontSize:14,fontWeight:600,color:'#e2e6f0' }}>🤝 {goal.name}</span>
-                        {streak>=3&&<span style={{ fontSize:11,background:'rgba(251,146,60,0.15)',border:'1px solid rgba(251,146,60,0.3)',color:'#fb923c',borderRadius:99,padding:'1px 8px' }}>🔥{streak}</span>}
-                        {isLive&&<span style={{ fontSize:10,color:'#34d399',animation:'none' }}>● canlı</span>}
+                        {str>=3&&<span style={{ fontSize:11,background:'rgba(251,146,60,0.15)',border:'1px solid rgba(251,146,60,0.3)',color:'#fb923c',borderRadius:99,padding:'1px 8px' }}>🔥{str}</span>}
+                        {isLive&&<span style={{ fontSize:10,color:'#34d399',marginLeft:4 }}>● canlı</span>}
                       </div>
                       <div style={{ height:4,background:'#242830',borderRadius:99,overflow:'hidden',marginBottom:5 }}>
                         <div style={{ height:'100%',width:`${progPct}%`,background:progPct>=70?'#34d399':progPct>=35?'#6366f1':'#f87171',borderRadius:99 }}/>
@@ -424,16 +423,15 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
                   </div>
                 </div>
 
-                {/* ── Expanded ── */}
                 {isOpen&&(
                   <div style={{ borderTop:'1px solid #2e3340' }}>
 
-                    {/* Stats */}
+                    {/* Stats grid */}
                     <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:1,background:'#2e3340' }}>
                       {[['İlerleme',`${progPct}%`,progPct>=70?'#34d399':progPct>=35?'#6366f1':'#f87171'],
                         ['Bugün',`${combinedToday}%`,'#e2e6f0'],
                         ['Kalite',`${qualityScore}%`,qualityScore>=70?'#34d399':'#fbbf24'],
-                        ['Seri',streak>=3?`${streak}🔥`:`${streak}`,'#fb923c']
+                        ['Seri',str>=3?`${str}🔥`:`${str}`,'#fb923c']
                       ].map(([l,v,c])=>(
                         <div key={l} style={{ background:'#111318',padding:'10px 0',textAlign:'center' }}>
                           <div style={{ fontSize:9,color:'#5c6475',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:3 }}>{l}</div>
@@ -451,17 +449,15 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
 
                     <div style={{ padding:'12px 14px' }}>
 
-                      {/* ── Benim sekmem ── */}
+                      {/* Benim */}
                       {tab(goal.id)==='mine'&&(
                         <div>
                           <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10 }}>
-                            <div style={{ fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em',color:'#5c6475' }}>
-                              Bugün {myDoneCount}/{myTasks.length} · Kendi Görevlerim
-                            </div>
+                            <span style={{ fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em',color:'#5c6475' }}>Bugün {myDoneCount}/{myTasks.length}</span>
                             <button onClick={()=>startEditTasks(goal.id)} style={{ ...S.btn('ghost'),padding:'5px 10px',fontSize:11 }}>✎ Düzenle</button>
                           </div>
                           {myTasks.length===0?(
-                            <div style={{ textAlign:'center',padding:'24px 16px',color:'#5c6475',fontSize:13,background:'#0d0f14',borderRadius:12 }}>
+                            <div style={{ textAlign:'center',padding:'24px',color:'#5c6475',fontSize:13,background:'#0d0f14',borderRadius:12 }}>
                               Henüz görev eklemedin
                               <button onClick={()=>startEditTasks(goal.id)} style={{ ...S.btn('ghost'),display:'block',margin:'8px auto 0',fontSize:12 }}>+ Görev Ekle</button>
                             </div>
@@ -487,24 +483,24 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
                         </div>
                       )}
 
-                      {/* ── Arkadaşım sekmesi ── */}
+                      {/* Arkadaşım */}
                       {tab(goal.id)==='partner'&&(
                         <div>
                           {partnerIds.length===0?(
                             <div style={{ textAlign:'center',padding:'24px',color:'#5c6475',fontSize:13 }}>Arkadaş henüz katılmadı</div>
                           ):partnerIds.map(uid=>{
-                            const pTasks= mTaskMap[uid]||[]
-                            const pProf = profiles[uid]||{ display_name:'Arkadaşın' }
-                            const pLogs = glogs.filter(l=>l.log_date===today&&l.user_id===uid)
-                            const pDone = pTasks.filter(t=>pLogs.find(l=>l.task_id===t.id)).length
-                            const pScore= Math.round(memberOverallScore(pTasks,glogs,goal.start_date,goal.total_days,uid)*100)
+                            const pTasks = mTaskMap[uid]||[]
+                            const pProf  = profiles[uid]||{ display_name:'Arkadaşın' }
+                            const pLogs  = glogs.filter(l=>l.log_date===today&&l.user_id===uid)
+                            const pDone  = pTasks.filter(t=>pLogs.find(l=>l.task_id===t.id)).length
+                            const pScore = Math.round(memberOverall(pTasks,glogs,goal.start_date,goal.total_days,uid)*100)
                             return (
                               <div key={uid}>
                                 <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:12,background:'#0d0f14',borderRadius:10,padding:'10px 12px' }}>
                                   <div style={{ width:32,height:32,borderRadius:'50%',background:'#fb923c',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,color:'#fff' }}>{initials(pProf.display_name)}</div>
                                   <div style={{ flex:1 }}>
                                     <div style={{ fontSize:13,fontWeight:600,color:'#e2e6f0' }}>{pProf.display_name}</div>
-                                    <div style={{ fontSize:11,color:'#5c6475' }}>Bugün: {pDone}/{pTasks.length} tamamladı · Genel: {pScore}%</div>
+                                    <div style={{ fontSize:11,color:'#5c6475' }}>Bugün: {pDone}/{pTasks.length} · Genel: {pScore}%</div>
                                   </div>
                                   {isLive&&<span style={{ fontSize:10,color:'#34d399' }}>● canlı</span>}
                                 </div>
@@ -526,18 +522,18 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
                         </div>
                       )}
 
-                      {/* ── Birlikte sekmesi ── */}
+                      {/* Birlikte */}
                       {tab(goal.id)==='combined'&&(
                         <div>
                           <div style={{ fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em',color:'#5c6475',marginBottom:10 }}>Kombine İlerleme</div>
                           {gmembers.map(m=>{
                             const uid=m.user_id
-                            const pT =mTaskMap[uid]||[]
-                            const pP =profiles[uid]||m.profiles||{}
+                            const pT=mTaskMap[uid]||[]
+                            const pP=profiles[uid]||m.profiles||{}
                             const isMe=uid===user.id
-                            const op =Math.round(memberOverallScore(pT,glogs,goal.start_date,goal.total_days,uid)*100)
-                            const tp =Math.round(memberDayScore(pT,glogs,today,uid)*100)
-                            const oc =op>=70?'#34d399':op>=35?'#6366f1':'#f87171'
+                            const op=Math.round(memberOverall(pT,glogs,goal.start_date,goal.total_days,uid)*100)
+                            const tp=Math.round(memberDayScore(pT,glogs,today,uid)*100)
+                            const oc=op>=70?'#34d399':op>=35?'#6366f1':'#f87171'
                             return (
                               <div key={uid} style={{ marginBottom:14 }}>
                                 <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:5 }}>
@@ -556,9 +552,8 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
                               </div>
                             )
                           })}
-                          {/* Rozetler */}
                           <div style={{ marginTop:14,display:'flex',gap:7,flexWrap:'wrap' }}>
-                            {streak>=7&&<span style={{ padding:'5px 11px',background:'rgba(251,146,60,0.1)',border:'1px solid rgba(251,146,60,0.3)',borderRadius:99,fontSize:11,color:'#fb923c' }}>🔥 {streak} günlük seri!</span>}
+                            {str>=7&&<span style={{ padding:'5px 11px',background:'rgba(251,146,60,0.1)',border:'1px solid rgba(251,146,60,0.3)',borderRadius:99,fontSize:11,color:'#fb923c' }}>🔥 {str} günlük seri!</span>}
                             {progPct>=50&&<span style={{ padding:'5px 11px',background:'rgba(52,211,153,0.1)',border:'1px solid rgba(52,211,153,0.3)',borderRadius:99,fontSize:11,color:'#34d399' }}>⭐ Yarı yolda!</span>}
                             {qualityScore>=80&&<span style={{ padding:'5px 11px',background:'rgba(99,102,241,0.1)',border:'1px solid rgba(99,102,241,0.3)',borderRadius:99,fontSize:11,color:'#a5b4fc' }}>💎 Yüksek kalite!</span>}
                             {combinedToday===100&&<span style={{ padding:'5px 11px',background:'rgba(52,211,153,0.1)',border:'1px solid rgba(52,211,153,0.3)',borderRadius:99,fontSize:11,color:'#34d399' }}>✅ Bugün tam puan!</span>}
@@ -566,8 +561,7 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
                         </div>
                       )}
 
-                      {/* Footer */}
-                      <div style={{ marginTop:14,paddingTop:12,borderTop:'1px solid #2e3340',display:'flex',justifyContent:'flex-end',gap:8 }}>
+                      <div style={{ marginTop:14,paddingTop:12,borderTop:'1px solid #2e3340',display:'flex',gap:8 }}>
                         <span style={{ fontSize:11,color:'#5c6475',alignSelf:'center',flex:1 }}>{rem} gün kaldı</span>
                         {isCreator
                           ?<button onClick={()=>setDeleteConfirm(goal.id)} style={{ ...S.btn('danger'),padding:'7px 12px',fontSize:12 }}>🗑 Sil</button>
@@ -583,17 +577,17 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
         </div>
       </div>
 
-      {/* Görev düzenleme modalı */}
+      {/* Görev düzenleme */}
       {editingTasks&&(
         <>
           <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.8)',zIndex:400 }} onClick={()=>setEditingTasks(null)}/>
           <div style={{ position:'fixed',top:'10%',left:'50%',transform:'translateX(-50%)',background:'#1c1f26',border:'1px solid #2e3340',borderRadius:16,padding:20,zIndex:401,width:'min(400px,90vw)',maxHeight:'80vh',overflowY:'auto' }}>
             <div style={{ fontSize:15,fontWeight:600,color:'#e2e6f0',marginBottom:6 }}>Kendi Görevlerimi Düzenle</div>
-            <div style={{ fontSize:12,color:'#5c6475',marginBottom:14 }}>Arkadaşın farklı görevler ekleyebilir — hedef ortak, sorumluluklar kişisel.</div>
+            <div style={{ fontSize:12,color:'#5c6475',marginBottom:14 }}>Hedef ortak, görevler kişisel. Arkadaşın farklı görevler ekleyebilir.</div>
             <div style={{ display:'flex',flexDirection:'column',gap:7,marginBottom:10 }}>
               {editTaskList.map((t,i)=>(
                 <div key={i} style={{ display:'flex',gap:7 }}>
-                  <input style={S.input} placeholder={`Görev ${i+1}`} value={t.name||''} onChange={e=>setEditTaskList(p=>p.map((x,j)=>j===i?{...x,name:e.target.value}:x))} autoFocus={i===editTaskList.length-1&&!t.name}/>
+                  <input style={S.input} placeholder={`Görev ${i+1}`} value={t.name||''} onChange={e=>setEditTaskList(p=>p.map((x,j)=>j===i?{...x,name:e.target.value}:x))}/>
                   <button onClick={()=>setEditTaskList(p=>p.filter((_,j)=>j!==i))} style={{ width:36,height:42,background:'#242830',border:'1px solid #2e3340',borderRadius:9,color:'#9aa0b0',cursor:'pointer',flexShrink:0 }}>✕</button>
                 </div>
               ))}
@@ -607,7 +601,6 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
         </>
       )}
 
-      {/* Silme onayı */}
       {deleteConfirm&&(
         <>
           <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',zIndex:400 }} onClick={()=>setDeleteConfirm(null)}/>
@@ -623,7 +616,6 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
         </>
       )}
 
-      {/* Ayrılma onayı */}
       {leaveConfirm&&(
         <>
           <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',zIndex:400 }} onClick={()=>setLeaveConfirm(null)}/>
