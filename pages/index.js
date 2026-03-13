@@ -143,6 +143,7 @@ export default function Home() {
   const [noteInputs, setNoteInputs] = useState({})
   const [mainTab,    setMainTab]    = useState('personal')
   const [showOnboarding, setShowOnboarding] = useState(false)
+  const [expandedGoal,   setExpandedGoal]   = useState(null)
 
   const supabase = createClient()
 
@@ -311,6 +312,8 @@ export default function Home() {
               tab={tabs[goal.id]||'tasks'}
               openHist={openHist}
               noteInputs={noteInputs}
+              isOpen={expandedGoal===goal.id}
+              onToggleOpen={()=>setExpandedGoal(p=>p===goal.id?null:goal.id)}
               onTabChange={t => setTabs(p=>({...p,[goal.id]:t}))}
               onToggleHist={k => setOpenHist(p=>({...p,[k]:!p[k]}))}
               onToggleTask={tid => toggleTask(goal.id, tid)}
@@ -434,7 +437,7 @@ function GoogleIcon() {
 }
 
 /* ─── Goal Card ──────────────────────────────────────────────────────────── */
-function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabChange, onToggleHist, onToggleTask, onSetQuality, onRemoveLog, onSaveNote, onNoteChange, onEdit, onDelete }) {
+function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabChange, onToggleHist, onToggleTask, onSetQuality, onRemoveLog, onSaveNote, onNoteChange, onEdit, onDelete, isOpen, onToggleOpen }) {
   const today    = todayStr()
   const op       = Math.round(overallScore(tasks,logs,goal.start_date,goal.total_days)*100)
   const tp       = Math.round(dayScore(tasks,logs,today)*100)
@@ -444,6 +447,7 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
   const eta      = getETA(tasks,logs,goal.start_date,goal.total_days)
   const earned   = getEarnedBadges(tasks,logs,goal.start_date,goal.total_days)
   const todayLogs= logs.filter(l=>l.log_date===today)
+  const doneTodayCount = todayLogs.length
 
   let avgSum=0,avgCnt=0
   for (let i=0;i<elapsed;i++) {
@@ -478,83 +482,100 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
   const n = tasks.length||1
 
   return (
-    <div style={css.card}>
-      {/* Goal header */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:16 }}>
-        <div style={{ flex:1, marginRight:12 }}>
-          <div style={{ fontSize:16, fontWeight:600, marginBottom:4 }}>{goal.name}</div>
-          <div style={{ fontSize:12, color:'var(--text3)' }}>
-            {elapsed} / {goal.total_days} gün tamamlandı · {remaining} gün kaldı
-          </div>
-        </div>
-        <div style={{ display:'flex', gap:6 }}>
-          <button style={css.iconBtn} onClick={onEdit}>✎</button>
-          <button style={{ ...css.iconBtn, color:'var(--bad)' }} onClick={onDelete}>✕</button>
-        </div>
-      </div>
+    <div style={{ ...css.card, padding:0, overflow:'hidden', marginBottom:10 }}>
 
-      {/* Progress bar */}
-      <div style={{ marginBottom:16 }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
-          <span style={{ fontSize:12, color:'var(--text3)' }}>Genel İlerleme</span>
-          <span style={{ fontSize:14, fontWeight:700, color:opColor }}>{op}%</span>
-        </div>
-        <div style={{ height:8, background:'var(--surface2)', borderRadius:99, overflow:'hidden' }}>
-          <div style={{ height:'100%', width:`${op}%`, background:gradBg, borderRadius:99, transition:'width 0.5s', opacity:0.85 }} />
-        </div>
-      </div>
-
-      {/* Stats grid */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8, marginBottom:16 }}>
-        {[
-          { label:'Bugün',       val:`${tp}%`,      color:'var(--text)' },
-          { label:'Günlük Ort.', val:`${ap}%`,      color:'var(--text)' },
-          { label:'Kalite Sk.',  val:`${qs}%`,      color:qColor        },
-          { label:'Seri',        val:`${streak} 🔥`, color:'var(--fire)' },
-        ].map((s,i) => (
-          <div key={i} style={{ background:'var(--surface2)', borderRadius:'var(--r-md)', padding:'12px 14px' }}>
-            <div style={{ fontSize:11, color:'var(--text3)', marginBottom:4 }}>{s.label}</div>
-            <div style={{ fontSize:18, fontWeight:700, color:s.color }}>{s.val}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* ETA */}
-      <div style={{ background:'var(--surface2)', borderRadius:'var(--r-md)', padding:'10px 14px', marginBottom:16, display:'flex', alignItems:'center', gap:8 }}>
-        <span style={{ fontSize:14 }}>⏱</span>
-        <span style={{ fontSize:13, color:eta.color }}>{eta.text}</span>
-      </div>
-
-      {/* Streak banner */}
-      {streak >= 3 && (
-        <div style={{ background:'var(--fire-bg)', border:'1px solid rgba(251,146,60,0.25)', borderRadius:'var(--r-md)', padding:'10px 14px', marginBottom:16, display:'flex', alignItems:'center', gap:10 }}>
-          <span style={{ fontSize:20 }}>🔥</span>
-          <div>
-            <div style={{ fontSize:15, fontWeight:700, color:'var(--fire)' }}>{streak} günlük seri!</div>
-            <div style={{ fontSize:12, color:'var(--text3)' }}>Devam et, bırakma</div>
-          </div>
-        </div>
-      )}
-
-      {/* Badges */}
-      <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginBottom:16 }}>
-        {BADGES.map(b => {
-          const e = earned.has(b.id)
-          return (
-            <div key={b.id} style={{ display:'flex', alignItems:'center', gap:5, padding:'5px 10px', borderRadius:99, background:e?'var(--accent-light)':'transparent', border:`1px solid ${e?'rgba(99,102,241,0.3)':'var(--border)'}`, opacity:e?1:0.35, fontSize:12 }}>
-              <span>{b.icon}</span>
-              <span style={{ fontWeight:e?500:400, color:e?'var(--text)':'var(--text3)' }}>{b.label}</span>
+      {/* ── Collapsed header — her zaman görünür ── */}
+      <div
+        onClick={onToggleOpen}
+        style={{ padding:'14px 16px', cursor:'pointer', userSelect:'none' }}
+      >
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <div style={{ flex:1 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
+              <span style={{ fontSize:15, fontWeight:600, color:'var(--text)' }}>{goal.name}</span>
+              {streak>=3 && <span style={{ fontSize:11, background:'rgba(251,146,60,0.12)', border:'1px solid rgba(251,146,60,0.3)', color:'var(--fire)', borderRadius:99, padding:'1px 8px' }}>🔥{streak}</span>}
             </div>
-          )
-        })}
+            {/* Mini progress bar */}
+            <div style={{ height:4, background:'var(--surface2)', borderRadius:99, overflow:'hidden', marginBottom:6 }}>
+              <div style={{ height:'100%', width:`${op}%`, background:gradBg, borderRadius:99, transition:'width 0.5s' }} />
+            </div>
+            <div style={{ display:'flex', gap:10, fontSize:11, color:'var(--text3)' }}>
+              <span>İlerleme <b style={{ color:opColor }}>{op}%</b></span>
+              <span>Bugün <b style={{ color:'var(--text)' }}>{tp}%</b></span>
+              <span>Kalite <b style={{ color:qColor }}>{qs}%</b></span>
+              <span style={{ marginLeft:'auto' }}>{elapsed}/{goal.total_days}g</span>
+            </div>
+          </div>
+          {/* Bugünkü durum + chevron */}
+          <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+            <div style={{ textAlign:'center' }}>
+              <div style={{ fontSize:11, color: doneTodayCount===tasks.length&&tasks.length>0?'var(--good)':'var(--text3)' }}>
+                {doneTodayCount}/{tasks.length}
+              </div>
+            </div>
+            <div style={{ display:'flex', gap:4 }}>
+              <button style={{ ...css.iconBtn, width:28, height:28, fontSize:12 }} onClick={e=>{e.stopPropagation();onEdit()}}>✎</button>
+              <button style={{ ...css.iconBtn, width:28, height:28, fontSize:12, color:'var(--bad)' }} onClick={e=>{e.stopPropagation();onDelete()}}>✕</button>
+            </div>
+            <span style={{ fontSize:16, color:'var(--text3)', transform:isOpen?'rotate(180deg)':'none', display:'inline-block', transition:'transform 0.2s' }}>⌄</span>
+          </div>
+        </div>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display:'flex', background:'var(--surface2)', borderRadius:'var(--r-md)', padding:3, marginBottom:16 }}>
-        {[['tasks','Görevler'],['history','Geçmiş'],['chart','Grafik']].map(([t,l]) => (
-          <button key={t} style={css.tab(tab===t)} onClick={()=>onTabChange(t)}>{l}</button>
-        ))}
-      </div>
+      {/* ── Expanded detail ── */}
+      {isOpen && (
+        <div style={{ borderTop:'1px solid var(--border)' }}>
+
+          {/* Stats grid */}
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:1, background:'var(--border)' }}>
+            {[
+              ['Bugün',   `${tp}%`,       'var(--text)'],
+              ['Ort.',    `${ap}%`,       'var(--text)'],
+              ['Kalite',  `${qs}%`,       qColor],
+              ['Seri',    streak>=3?`${streak}🔥`:`${streak}`, 'var(--fire)'],
+            ].map(([l,v,c])=>(
+              <div key={l} style={{ background:'var(--surface)', padding:'10px 0', textAlign:'center' }}>
+                <div style={{ fontSize:9, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:3 }}>{l}</div>
+                <div style={{ fontSize:16, fontWeight:700, color:c }}>{v}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* ETA */}
+          <div style={{ margin:'12px 16px 0', background:'var(--surface2)', borderRadius:'var(--r-md)', padding:'9px 13px', display:'flex', alignItems:'center', gap:8 }}>
+            <span style={{ fontSize:13 }}>⏱</span>
+            <span style={{ fontSize:12, color:eta.color }}>{eta.text}</span>
+          </div>
+
+          {/* Streak banner */}
+          {streak >= 3 && (
+            <div style={{ margin:'10px 16px 0', background:'var(--fire-bg)', border:'1px solid rgba(251,146,60,0.25)', borderRadius:'var(--r-md)', padding:'9px 13px', display:'flex', alignItems:'center', gap:10 }}>
+              <span style={{ fontSize:18 }}>🔥</span>
+              <div style={{ fontSize:14, fontWeight:700, color:'var(--fire)' }}>{streak} günlük seri! Devam et</div>
+            </div>
+          )}
+
+          {/* Badges */}
+          <div style={{ display:'flex', flexWrap:'wrap', gap:5, padding:'10px 16px 0' }}>
+            {BADGES.map(b => {
+              const e = earned.has(b.id)
+              return (
+                <div key={b.id} style={{ display:'flex', alignItems:'center', gap:4, padding:'4px 9px', borderRadius:99, background:e?'var(--accent-light)':'transparent', border:`1px solid ${e?'rgba(99,102,241,0.3)':'var(--border)'}`, opacity:e?1:0.3, fontSize:11 }}>
+                  <span>{b.icon}</span>
+                  <span style={{ fontWeight:e?500:400, color:e?'var(--text)':'var(--text3)' }}>{b.label}</span>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Tabs */}
+          <div style={{ display:'flex', background:'var(--surface2)', borderRadius:'var(--r-md)', padding:3, margin:'12px 16px 0' }}>
+            {[['tasks','Görevler'],['history','Geçmiş'],['chart','Grafik']].map(([t,l]) => (
+              <button key={t} style={css.tab(tab===t)} onClick={()=>onTabChange(t)}>{l}</button>
+            ))}
+          </div>
+
+          <div style={{ padding:'12px 16px 16px' }}>
 
       {/* TASKS */}
       {tab==='tasks' && (
@@ -608,7 +629,7 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
         </div>
       )}
 
-      {/* HISTORY */}
+        {/* HISTORY */}
       {tab==='history' && (
         <div>
           <div style={{ ...css.label, marginBottom:10 }}>Son 14 Gün</div>
@@ -688,9 +709,12 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
           </div>
         </div>
       )}
+          </div>  {/* padding div */}
+        </div>   {/* expanded detail */}
+      )}
     </div>
   )
-}
+} 
 
 /* ─── Quality Bar ────────────────────────────────────────────────────────── */
 function QBar({ logs }) {
