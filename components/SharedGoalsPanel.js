@@ -166,40 +166,29 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose }) {
     }
   }
 
-  // Sadece logları yenile (realtime tetikler)
+  // Sadece logları yenile
   async function reloadLogsForGoal(goalId) {
-    // memberTasks state'inden güncel task id'leri al
-    setMemberTasks(prevMT => {
-      const allTIds = Object.values(prevMT[goalId]||{}).flat().map(t=>t.id)
-      if (!allTIds.length) return prevMT
-      supabase.from('shared_logs').select('*').in('task_id',allTIds).then(({data:l}) => {
-        setLogs(prev=>({...prev,[goalId]:l||[]}))
-      })
-      return prevMT
-    })
+    const allTIds = Object.values(memberTasks[goalId]||{}).flat().map(t=>t.id)
+    if (!allTIds.length) return
+    const { data:l } = await supabase.from('shared_logs').select('*').in('task_id', allTIds)
+    setLogs(prev=>({...prev,[goalId]:l||[]}))
   }
 
   // Görevleri yenile (realtime tetikler)
   async function reloadMemberTasksForGoal(goalId) {
-    setMembers(prevM => {
-      const memberIds = (prevM[goalId]||[]).map(m=>m.user_id)
-      ;(async () => {
-        const tasksByUser={}
-        for (const uid of memberIds) {
-          const { data:t } = await supabase.from('shared_member_tasks')
-            .select('*').eq('goal_id',goalId).eq('user_id',uid).order('order_index')
-          tasksByUser[uid] = t||[]
-        }
-        setMemberTasks(prev=>({...prev,[goalId]:tasksByUser}))
-        // Logları da yenile
-        const allTIds = Object.values(tasksByUser).flat().map(t=>t.id)
-        if (allTIds.length) {
-          const { data:l } = await supabase.from('shared_logs').select('*').in('task_id',allTIds)
-          setLogs(prev=>({...prev,[goalId]:l||[]}))
-        }
-      })()
-      return prevM
-    })
+    const memberIds = (members[goalId]||[]).map(m=>m.user_id)
+    const tasksByUser={}
+    for (const uid of memberIds) {
+      const { data:t } = await supabase.from('shared_member_tasks')
+        .select('*').eq('goal_id',goalId).eq('user_id',uid).order('order_index')
+      tasksByUser[uid] = t||[]
+    }
+    setMemberTasks(prev=>({...prev,[goalId]:tasksByUser}))
+    const allTIds = Object.values(tasksByUser).flat().map(t=>t.id)
+    if (allTIds.length) {
+      const { data:l } = await supabase.from('shared_logs').select('*').in('task_id',allTIds)
+      setLogs(prev=>({...prev,[goalId]:l||[]}))
+    }
   }
 
   /* Görev toggle — task_owner_id olmadan da çalışsın */
