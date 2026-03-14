@@ -34,17 +34,17 @@ function streak(mTaskMap,logs,start,ids) {
 
 const S = {
   overlay:{ position:'fixed',inset:0,background:'rgba(10,12,18,0.75)',backdropFilter:'blur(4px)',zIndex:300 },
-  panel:  { position:'fixed',inset:0,background:'#111318',zIndex:301,overflowY:'auto',maxWidth:480,margin:'0 auto' },
-  hdr:    { padding:'14px 16px',borderBottom:'1px solid #2e3340',display:'flex',alignItems:'center',gap:10,position:'sticky',top:0,background:'#111318',zIndex:2 },
-  input:  { width:'100%',background:'#0d0f14',border:'1px solid #2e3340',borderRadius:10,padding:'10px 13px',color:'#e2e6f0',fontSize:14,outline:'none',fontFamily:'inherit' },
-  lbl:    { fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em',color:'#5c6475',marginBottom:7,display:'block' },
-  btn: v=>({ padding:'10px 16px',borderRadius:10,fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit',
-    background:v==='primary'?'#6366f1':v==='danger'?'rgba(248,113,113,0.1)':v==='ghost'?'transparent':'#1c1f26',
+  panel:  { position:'fixed',inset:0,background:'var(--bg)',zIndex:301,overflowY:'auto',maxWidth:480,margin:'0 auto' },
+  hdr:    { padding:'14px 16px',borderBottom:'1.5px solid #2e3340',display:'flex',alignItems:'center',gap:10,position:'sticky',top:0,background:'var(--bg)',zIndex:2 },
+  input:  { width:'100%',background:'#0d0f14',border:'1.5px solid #2e3340',borderRadius:14,padding:'10px 13px',color:'var(--text)',fontSize:14,outline:'none',fontFamily:'inherit' },
+  lbl:    { fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',color:'var(--text3)',marginBottom:7,display:'block' },
+  btn: v=>({ padding:'10px 16px',borderRadius:14,fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:'inherit',
+    background:v==='primary'?'#7c6ff7':v==='danger'?'rgba(248,113,113,0.1)':v==='ghost'?'transparent':'var(--surface)',
     border:v==='primary'?'none':v==='danger'?'1px solid rgba(248,113,113,0.3)':v==='ghost'?'none':'1px solid #2e3340',
-    color:v==='primary'?'#fff':v==='danger'?'#f87171':v==='ghost'?'#6366f1':'#9aa0b0' }),
+    color:v==='primary'?'#fff':v==='danger'?'#f87171':v==='ghost'?'#7c6ff7':'var(--text2)' }),
   qBg:  { good:'rgba(52,211,153,0.1)',  mid:'rgba(251,191,36,0.1)',  bad:'rgba(248,113,113,0.1)' },
   qBord:{ good:'rgba(52,211,153,0.3)',  mid:'rgba(251,191,36,0.3)',  bad:'rgba(248,113,113,0.3)' },
-  qCol: { good:'#34d399', mid:'#fbbf24', bad:'#f87171' },
+  qCol: { good:'#4ade80', mid:'#fbbf24', bad:'#f87171' },
 }
 
 export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=false }) {
@@ -302,10 +302,10 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
     <Wrapper>
       {!inline && (
         <div style={S.hdr}>
-          <button onClick={onClose} style={{ width:32,height:32,background:'#1c1f26',border:'1px solid #2e3340',borderRadius:8,color:'#9aa0b0',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center' }}>←</button>
+          <button onClick={onClose} style={{ width:32,height:32,background:'var(--surface)',border:'1.5px solid #2e3340',borderRadius:16,color:'var(--text2)',cursor:'pointer',fontSize:16,display:'flex',alignItems:'center',justifyContent:'center' }}>←</button>
           <div style={{ flex:1 }}>
-            <div style={{ fontSize:16,fontWeight:600,color:'#e2e6f0' }}>Ortak Hedefler</div>
-            <div style={{ fontSize:11,color:'#5c6475' }}>{goals.length} hedef</div>
+            <div style={{ fontSize:16,fontWeight:700,color:'var(--text)' }}>Ortak Hedefler</div>
+            <div style={{ fontSize:11,color:'var(--text3)' }}>{goals.length} hedef</div>
           </div>
           <button onClick={()=>setShowCreate(true)} style={{ ...S.btn('primary'),padding:'8px 14px',fontSize:12 }}>+ Yeni</button>
         </div>
@@ -313,7 +313,7 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
 
       {inline && (
         <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 16px 12px' }}>
-          <div style={{ fontSize:13,color:'#5c6475' }}>{goals.length} ortak hedef</div>
+          <div style={{ fontSize:13,color:'var(--text3)' }}>{goals.length} ortak hedef</div>
           <button onClick={()=>setShowCreate(true)} style={{ ...S.btn('primary'),padding:'8px 14px',fontSize:12 }}>+ Yeni</button>
         </div>
       )}
@@ -321,13 +321,13 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
         <div style={{ padding:'14px 16px' }}>
 
           {invitations.length>0&&(
-            <div style={{ background:'rgba(99,102,241,0.07)',border:'1px solid rgba(99,102,241,0.25)',borderRadius:14,padding:14,marginBottom:14 }}>
-              <div style={{ fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',color:'#6366f1',marginBottom:10 }}>📨 Ortak Hedef Daveti</div>
+            <div style={{ background:'rgba(99,102,241,0.07)',border:'1.5px solid rgba(99,102,241,0.25)',borderRadius:14,padding:14,marginBottom:14 }}>
+              <div style={{ fontSize:11,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',color:'#7c6ff7',marginBottom:10 }}>📨 Ortak Hedef Daveti</div>
               {invitations.map(inv=>(
                 <div key={inv.id} style={{ display:'flex',alignItems:'center',gap:10,padding:'8px 0' }}>
                   <div style={{ flex:1 }}>
-                    <div style={{ fontSize:13,fontWeight:600,color:'#e2e6f0' }}>{inv.goal?.name}</div>
-                    <div style={{ fontSize:11,color:'#5c6475' }}>{inv.inviter?.display_name} · {inv.goal?.total_days} gün</div>
+                    <div style={{ fontSize:13,fontWeight:700,color:'var(--text)' }}>{inv.goal?.name}</div>
+                    <div style={{ fontSize:11,color:'var(--text3)' }}>{inv.inviter?.display_name} · {inv.goal?.total_days} gün</div>
                   </div>
                   <button onClick={()=>acceptInvitation(inv)} style={{ ...S.btn('primary'),padding:'7px 12px',fontSize:12 }}>Katıl</button>
                   <button onClick={()=>rejectInvitation(inv)} style={{ ...S.btn('secondary'),padding:'7px 10px',fontSize:12,color:'#f87171' }}>Reddet</button>
@@ -337,16 +337,16 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
           )}
 
           {showCreate&&(
-            <div style={{ background:'#1c1f26',border:'1px solid rgba(99,102,241,0.35)',borderRadius:16,padding:18,marginBottom:16 }}>
-              <div style={{ fontSize:15,fontWeight:600,color:'#e2e6f0',marginBottom:14 }}>Yeni Ortak Hedef</div>
+            <div style={{ background:'var(--surface)',border:'1.5px solid rgba(99,102,241,0.35)',borderRadius:16,padding:18,marginBottom:16 }}>
+              <div style={{ fontSize:15,fontWeight:700,color:'var(--text)',marginBottom:14 }}>Yeni Ortak Hedef</div>
               <div style={{ marginBottom:12 }}>
                 <span style={S.lbl}>Arkadaş Seç</span>
                 {friends.length===0
-                  ? <div style={{ fontSize:13,color:'#f87171',background:'rgba(248,113,113,0.08)',border:'1px solid rgba(248,113,113,0.2)',borderRadius:8,padding:'10px 12px' }}>Önce profil panelinden arkadaş ekle</div>
+                  ? <div style={{ fontSize:13,color:'#f87171',background:'rgba(248,113,113,0.08)',border:'1.5px solid rgba(248,113,113,0.2)',borderRadius:16,padding:'10px 12px' }}>Önce profil panelinden arkadaş ekle</div>
                   : <div style={{ display:'flex',flexWrap:'wrap',gap:7 }}>
                       {friends.map(f=>(
-                        <div key={f.id} onClick={()=>setSelectedFriend(f)} style={{ padding:'7px 13px',borderRadius:99,border:`1.5px solid ${selectedFriend?.id===f.id?'#6366f1':'#2e3340'}`,background:selectedFriend?.id===f.id?'rgba(99,102,241,0.15)':'transparent',color:selectedFriend?.id===f.id?'#a5b4fc':'#9aa0b0',fontSize:13,cursor:'pointer',display:'flex',alignItems:'center',gap:6 }}>
-                          <div style={{ width:20,height:20,borderRadius:'50%',background:'#6366f1',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:'#fff' }}>{initials(f.display_name)}</div>
+                        <div key={f.id} onClick={()=>setSelectedFriend(f)} style={{ padding:'7px 13px',borderRadius:99,border:`1.5px solid ${selectedFriend?.id===f.id?'#7c6ff7':'var(--border)'}`,background:selectedFriend?.id===f.id?'rgba(99,102,241,0.15)':'transparent',color:selectedFriend?.id===f.id?'#a5b4fc':'var(--text2)',fontSize:13,cursor:'pointer',display:'flex',alignItems:'center',gap:6 }}>
+                          <div style={{ width:20,height:20,borderRadius:'50%',background:'#7c6ff7',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:'#fff' }}>{initials(f.display_name)}</div>
                           {f.display_name}{selectedFriend?.id===f.id&&' ✓'}
                         </div>
                       ))}
@@ -361,7 +361,7 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
                 <span style={S.lbl}>Süre (gün)</span>
                 <input type="number" style={S.input} placeholder="örn: 30" value={newDays} onChange={e=>setNewDays(e.target.value)}/>
               </div>
-              <div style={{ background:'rgba(99,102,241,0.07)',border:'1px solid rgba(99,102,241,0.2)',borderRadius:8,padding:'9px 12px',marginBottom:12,fontSize:12,color:'#a5b4fc' }}>
+              <div style={{ background:'rgba(99,102,241,0.07)',border:'1.5px solid rgba(99,102,241,0.2)',borderRadius:16,padding:'9px 12px',marginBottom:12,fontSize:12,color:'#a5b4fc' }}>
                 💡 Katıldıktan sonra herkes kendi görevlerini ekler.
               </div>
               <div style={{ display:'flex',gap:9 }}>
@@ -372,9 +372,9 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
           )}
 
           {goals.length===0&&!showCreate&&invitations.length===0&&(
-            <div style={{ textAlign:'center',padding:'50px 20px',color:'#5c6475' }}>
+            <div style={{ textAlign:'center',padding:'50px 20px',color:'var(--text3)' }}>
               <div style={{ fontSize:36,marginBottom:10 }}>🤝</div>
-              <div style={{ fontSize:15,fontWeight:600,color:'#9aa0b0',marginBottom:6 }}>Henüz ortak hedef yok</div>
+              <div style={{ fontSize:15,fontWeight:700,color:'var(--text2)',marginBottom:6 }}>Henüz ortak hedef yok</div>
               <div style={{ fontSize:13 }}>+ Yeni butonuyla arkadaşını davet et</div>
             </div>
           )}
@@ -406,52 +406,52 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
             const myDoneCount = myTasks.filter(t=>myLogs.find(l=>l.task_id===t.id)).length
 
             return (
-              <div key={goal.id} style={{ background:'#1c1f26',border:`1px solid ${isOpen?'rgba(99,102,241,0.4)':'#2e3340'}`,borderRadius:16,marginBottom:10,overflow:'hidden' }}>
+              <div key={goal.id} style={{ background:'var(--surface)',border:`1.5px solid ${isOpen?'rgba(99,102,241,0.4)':'var(--border)'}`,borderRadius:16,marginBottom:10,overflow:'hidden' }}>
 
                 {/* Başlık */}
                 <div onClick={()=>setExpandedGoal(isOpen?null:goal.id)} style={{ padding:'14px 16px',cursor:'pointer',userSelect:'none' }}>
                   <div style={{ display:'flex',alignItems:'center',gap:10 }}>
                     <div style={{ flex:1 }}>
                       <div style={{ display:'flex',alignItems:'center',gap:7,marginBottom:5 }}>
-                        <span style={{ fontSize:14,fontWeight:600,color:'#e2e6f0' }}>🤝 {goal.name}</span>
-                        {str>=3&&<span style={{ fontSize:11,background:'rgba(251,146,60,0.15)',border:'1px solid rgba(251,146,60,0.3)',color:'#fb923c',borderRadius:99,padding:'1px 8px' }}>🔥{str}</span>}
-                        {isLive&&<span style={{ fontSize:10,color:'#34d399',marginLeft:4 }}>● canlı</span>}
+                        <span style={{ fontSize:14,fontWeight:700,color:'var(--text)' }}>🤝 {goal.name}</span>
+                        {str>=3&&<span style={{ fontSize:11,background:'rgba(251,146,60,0.15)',border:'1.5px solid rgba(251,146,60,0.3)',color:'#fb923c',borderRadius:99,padding:'1px 8px' }}>🔥{str}</span>}
+                        {isLive&&<span style={{ fontSize:10,color:'#4ade80',marginLeft:4 }}>● canlı</span>}
                       </div>
-                      <div style={{ height:4,background:'#242830',borderRadius:99,overflow:'hidden',marginBottom:5 }}>
-                        <div style={{ height:'100%',width:`${progPct}%`,background:progPct>=70?'#34d399':progPct>=35?'#6366f1':'#f87171',borderRadius:99 }}/>
+                      <div style={{ height:4,background:'var(--surface2)',borderRadius:99,overflow:'hidden',marginBottom:5 }}>
+                        <div style={{ height:'100%',width:`${progPct}%`,background:progPct>=70?'#4ade80':progPct>=35?'#7c6ff7':'#f87171',borderRadius:99 }}/>
                       </div>
-                      <div style={{ display:'flex',gap:10,fontSize:11,color:'#5c6475' }}>
-                        <span>İlerleme <b style={{ color:progPct>=70?'#34d399':progPct>=35?'#6366f1':'#f87171' }}>{progPct}%</b></span>
-                        <span>Bugün <b style={{ color:'#e2e6f0' }}>{combinedToday}%</b></span>
-                        <span>Kalite <b style={{ color:qualityScore>=70?'#34d399':'#fbbf24' }}>{qualityScore}%</b></span>
+                      <div style={{ display:'flex',gap:10,fontSize:11,color:'var(--text3)' }}>
+                        <span>İlerleme <b style={{ color:progPct>=70?'#4ade80':progPct>=35?'#7c6ff7':'#f87171' }}>{progPct}%</b></span>
+                        <span>Bugün <b style={{ color:'var(--text)' }}>{combinedToday}%</b></span>
+                        <span>Kalite <b style={{ color:qualityScore>=70?'#4ade80':'#fbbf24' }}>{qualityScore}%</b></span>
                         <span style={{ marginLeft:'auto' }}>{el}/{goal.total_days}g</span>
                       </div>
                     </div>
                     <div style={{ display:'flex',alignItems:'center',gap:6 }}>
                       <div style={{ display:'flex' }}>
                         {gmembers.map((m,i)=>(
-                          <div key={m.user_id} style={{ width:26,height:26,borderRadius:'50%',background:m.user_id===user.id?'#6366f1':'#fb923c',border:'2px solid #1c1f26',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,color:'#fff',marginLeft:i?-8:0 }}>
+                          <div key={m.user_id} style={{ width:26,height:26,borderRadius:'50%',background:m.user_id===user.id?'#7c6ff7':'#fb923c',border:'2px solid #1c1f26',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,color:'#fff',marginLeft:i?-8:0 }}>
                             {initials(profiles[m.user_id]?.display_name||m.profiles?.display_name)}
                           </div>
                         ))}
                       </div>
-                      <span style={{ fontSize:16,color:'#5c6475',transform:isOpen?'rotate(180deg)':'none',display:'inline-block',transition:'transform 0.2s' }}>⌄</span>
+                      <span style={{ fontSize:16,color:'var(--text3)',transform:isOpen?'rotate(180deg)':'none',display:'inline-block',transition:'transform 0.2s' }}>⌄</span>
                     </div>
                   </div>
                 </div>
 
                 {isOpen&&(
-                  <div style={{ borderTop:'1px solid #2e3340' }}>
+                  <div style={{ borderTop:'1.5px solid #2e3340' }}>
 
                     {/* Stats grid */}
-                    <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:1,background:'#2e3340' }}>
-                      {[['İlerleme',`${progPct}%`,progPct>=70?'#34d399':progPct>=35?'#6366f1':'#f87171'],
-                        ['Bugün',`${combinedToday}%`,'#e2e6f0'],
-                        ['Kalite',`${qualityScore}%`,qualityScore>=70?'#34d399':'#fbbf24'],
+                    <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:1,background:'var(--border)' }}>
+                      {[['İlerleme',`${progPct}%`,progPct>=70?'#4ade80':progPct>=35?'#7c6ff7':'#f87171'],
+                        ['Bugün',`${combinedToday}%`,'var(--text)'],
+                        ['Kalite',`${qualityScore}%`,qualityScore>=70?'#4ade80':'#fbbf24'],
                         ['Seri',str>=3?`${str}🔥`:`${str}`,'#fb923c']
                       ].map(([l,v,c])=>(
-                        <div key={l} style={{ background:'#111318',padding:'10px 0',textAlign:'center' }}>
-                          <div style={{ fontSize:9,color:'#5c6475',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:3 }}>{l}</div>
+                        <div key={l} style={{ background:'var(--bg)',padding:'10px 0',textAlign:'center' }}>
+                          <div style={{ fontSize:9,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'0.06em',marginBottom:3 }}>{l}</div>
                           <div style={{ fontSize:16,fontWeight:700,color:c }}>{v}</div>
                         </div>
                       ))}
@@ -460,7 +460,7 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
                     {/* Tabs */}
                     <div style={{ display:'flex',background:'#0d0f14',padding:'6px 14px',gap:4 }}>
                       {[['mine','Benim'],['partner','Arkadaşım'],['combined','Birlikte']].map(([t,l])=>(
-                        <button key={t} onClick={()=>setTab(goal.id,t)} style={{ flex:1,padding:'7px',background:tab(goal.id)===t?'#1c1f26':'transparent',border:tab(goal.id)===t?'1px solid #2e3340':'1px solid transparent',borderRadius:8,color:tab(goal.id)===t?'#e2e6f0':'#5c6475',fontSize:11,fontWeight:tab(goal.id)===t?600:400,cursor:'pointer',fontFamily:'inherit' }}>{l}</button>
+                        <button key={t} onClick={()=>setTab(goal.id,t)} style={{ flex:1,padding:'7px',background:tab(goal.id)===t?'var(--surface)':'transparent',border:tab(goal.id)===t?'1px solid #2e3340':'1px solid transparent',borderRadius:16,color:tab(goal.id)===t?'var(--text)':'var(--text3)',fontSize:11,fontWeight:tab(goal.id)===t?600:400,cursor:'pointer',fontFamily:'inherit' }}>{l}</button>
                       ))}
                     </div>
 
@@ -470,27 +470,27 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
                       {tab(goal.id)==='mine'&&(
                         <div>
                           <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10 }}>
-                            <span style={{ fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em',color:'#5c6475' }}>Bugün {myDoneCount}/{myTasks.length}</span>
+                            <span style={{ fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',color:'var(--text3)' }}>Bugün {myDoneCount}/{myTasks.length}</span>
                             <button onClick={()=>startEditTasks(goal.id)} style={{ ...S.btn('ghost'),padding:'5px 10px',fontSize:11 }}>✎ Düzenle</button>
                           </div>
                           {myTasks.length===0?(
-                            <div style={{ textAlign:'center',padding:'24px',color:'#5c6475',fontSize:13,background:'#0d0f14',borderRadius:12 }}>
+                            <div style={{ textAlign:'center',padding:'24px',color:'var(--text3)',fontSize:13,background:'#0d0f14',borderRadius:12 }}>
                               Henüz görev eklemedin
                               <button onClick={()=>startEditTasks(goal.id)} style={{ ...S.btn('ghost'),display:'block',margin:'8px auto 0',fontSize:12 }}>+ Görev Ekle</button>
                             </div>
                           ):myTasks.map(t=>{
                             const log=myLogs.find(l=>l.task_id===t.id); const q=log?.quality
                             return (
-                              <div key={t.id} style={{ background:q?S.qBg[q]:'#242830',border:`1px solid ${q?S.qBord[q]:'#2e3340'}`,borderRadius:10,overflow:'hidden',marginBottom:7 }}>
+                              <div key={t.id} style={{ background:q?S.qBg[q]:'var(--surface2)',border:`1.5px solid ${q?S.qBord[q]:'var(--border)'}`,borderRadius:14,overflow:'hidden',marginBottom:7 }}>
                                 <div style={{ display:'flex',alignItems:'center',gap:10,padding:'11px 12px',cursor:'pointer' }} onClick={()=>toggleTask(goal.id,t.id)}>
-                                  <div style={{ width:22,height:22,borderRadius:6,border:`2px solid ${q?S.qCol[q]:'#3a4050'}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,flexShrink:0,background:q?S.qBg[q]:'transparent',color:q?S.qCol[q]:'transparent' }}>{q?QSym[q]:''}</div>
-                                  <div style={{ flex:1,fontSize:13,textDecoration:q?'line-through':'none',color:q?'#5c6475':'#e2e6f0' }}>{t.name}</div>
-                                  {q&&<span style={{ fontSize:10,fontWeight:600,color:S.qCol[q],background:S.qBg[q],padding:'2px 7px',borderRadius:99 }}>{QL[q]}</span>}
+                                  <div style={{ width:22,height:22,borderRadius:6,border:`2px solid ${q?S.qCol[q]:'var(--border2)'}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,flexShrink:0,background:q?S.qBg[q]:'transparent',color:q?S.qCol[q]:'transparent' }}>{q?QSym[q]:''}</div>
+                                  <div style={{ flex:1,fontSize:13,textDecoration:q?'line-through':'none',color:q?'var(--text3)':'var(--text)' }}>{t.name}</div>
+                                  {q&&<span style={{ fontSize:10,fontWeight:700,color:S.qCol[q],background:S.qBg[q],padding:'2px 7px',borderRadius:99 }}>{QL[q]}</span>}
                                 </div>
                                 {q&&(
                                   <div style={{ display:'flex',gap:5,padding:'0 12px 9px' }}>
                                     {['good','mid','bad'].map(qv=>(
-                                      <button key={qv} onClick={()=>setQuality(goal.id,t.id,qv)} style={{ flex:1,padding:'5px',borderRadius:7,border:`1.5px solid ${q===qv?S.qCol[qv]:'#2e3340'}`,background:q===qv?S.qBg[qv]:'transparent',color:q===qv?S.qCol[qv]:'#5c6475',fontSize:10,fontWeight:600,cursor:'pointer',fontFamily:'inherit' }}>{QL[qv]}</button>
+                                      <button key={qv} onClick={()=>setQuality(goal.id,t.id,qv)} style={{ flex:1,padding:'5px',borderRadius:7,border:`1.5px solid ${q===qv?S.qCol[qv]:'var(--border)'}`,background:q===qv?S.qBg[qv]:'transparent',color:q===qv?S.qCol[qv]:'var(--text3)',fontSize:10,fontWeight:700,cursor:'pointer',fontFamily:'inherit' }}>{QL[qv]}</button>
                                     ))}
                                   </div>
                                 )}
@@ -504,7 +504,7 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
                       {tab(goal.id)==='partner'&&(
                         <div>
                           {partnerIds.length===0?(
-                            <div style={{ textAlign:'center',padding:'24px',color:'#5c6475',fontSize:13 }}>Arkadaş henüz katılmadı</div>
+                            <div style={{ textAlign:'center',padding:'24px',color:'var(--text3)',fontSize:13 }}>Arkadaş henüz katılmadı</div>
                           ):partnerIds.map(uid=>{
                             const pTasks = mTaskMap[uid]||[]
                             const pProf  = profiles[uid]||{ display_name:'Arkadaşın' }
@@ -513,23 +513,23 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
                             const pScore = Math.round(memberOverall(pTasks,glogs,goal.start_date,goal.total_days,uid)*100)
                             return (
                               <div key={uid}>
-                                <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:12,background:'#0d0f14',borderRadius:10,padding:'10px 12px' }}>
+                                <div style={{ display:'flex',alignItems:'center',gap:8,marginBottom:12,background:'#0d0f14',borderRadius:14,padding:'10px 12px' }}>
                                   <div style={{ width:32,height:32,borderRadius:'50%',background:'#fb923c',display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:700,color:'#fff' }}>{initials(pProf.display_name)}</div>
                                   <div style={{ flex:1 }}>
-                                    <div style={{ fontSize:13,fontWeight:600,color:'#e2e6f0' }}>{pProf.display_name}</div>
-                                    <div style={{ fontSize:11,color:'#5c6475' }}>Bugün: {pDone}/{pTasks.length} · Genel: {pScore}%</div>
+                                    <div style={{ fontSize:13,fontWeight:700,color:'var(--text)' }}>{pProf.display_name}</div>
+                                    <div style={{ fontSize:11,color:'var(--text3)' }}>Bugün: {pDone}/{pTasks.length} · Genel: {pScore}%</div>
                                   </div>
-                                  {isLive&&<span style={{ fontSize:10,color:'#34d399' }}>● canlı</span>}
+                                  {isLive&&<span style={{ fontSize:10,color:'#4ade80' }}>● canlı</span>}
                                 </div>
                                 {pTasks.length===0?(
-                                  <div style={{ textAlign:'center',padding:'20px',color:'#5c6475',fontSize:13,background:'#0d0f14',borderRadius:10 }}>Henüz görev eklemedi</div>
+                                  <div style={{ textAlign:'center',padding:'20px',color:'var(--text3)',fontSize:13,background:'#0d0f14',borderRadius:10 }}>Henüz görev eklemedi</div>
                                 ):pTasks.map(t=>{
                                   const log=pLogs.find(l=>l.task_id===t.id); const q=log?.quality
                                   return (
-                                    <div key={t.id} style={{ background:q?S.qBg[q]:'#0d0f14',border:`1px solid ${q?S.qBord[q]:'#2e3340'}`,borderRadius:9,padding:'10px 12px',marginBottom:6,display:'flex',alignItems:'center',gap:9 }}>
-                                      <div style={{ width:20,height:20,borderRadius:5,border:`2px solid ${q?S.qCol[q]:'#3a4050'}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0,background:q?S.qBg[q]:'transparent',color:q?S.qCol[q]:'transparent' }}>{q?QSym[q]:''}</div>
-                                      <div style={{ flex:1,fontSize:13,color:q?'#5c6475':'#e2e6f0',textDecoration:q?'line-through':'none' }}>{t.name}</div>
-                                      {q&&<span style={{ fontSize:10,fontWeight:600,color:S.qCol[q] }}>{QL[q]}</span>}
+                                    <div key={t.id} style={{ background:q?S.qBg[q]:'#0d0f14',border:`1.5px solid ${q?S.qBord[q]:'var(--border)'}`,borderRadius:9,padding:'10px 12px',marginBottom:6,display:'flex',alignItems:'center',gap:9 }}>
+                                      <div style={{ width:20,height:20,borderRadius:5,border:`2px solid ${q?S.qCol[q]:'var(--border2)'}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0,background:q?S.qBg[q]:'transparent',color:q?S.qCol[q]:'transparent' }}>{q?QSym[q]:''}</div>
+                                      <div style={{ flex:1,fontSize:13,color:q?'var(--text3)':'var(--text)',textDecoration:q?'line-through':'none' }}>{t.name}</div>
+                                      {q&&<span style={{ fontSize:10,fontWeight:700,color:S.qCol[q] }}>{QL[q]}</span>}
                                     </div>
                                   )
                                 })}
@@ -542,7 +542,7 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
                       {/* Birlikte */}
                       {tab(goal.id)==='combined'&&(
                         <div>
-                          <div style={{ fontSize:10,fontWeight:600,textTransform:'uppercase',letterSpacing:'0.08em',color:'#5c6475',marginBottom:10 }}>Kombine İlerleme</div>
+                          <div style={{ fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',color:'var(--text3)',marginBottom:10 }}>Kombine İlerleme</div>
                           {gmembers.map(m=>{
                             const uid=m.user_id
                             const pT=mTaskMap[uid]||[]
@@ -550,36 +550,36 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
                             const isMe=uid===user.id
                             const op=Math.round(memberOverall(pT,glogs,goal.start_date,goal.total_days,uid)*100)
                             const tp=Math.round(memberDayScore(pT,glogs,today,uid)*100)
-                            const oc=op>=70?'#34d399':op>=35?'#6366f1':'#f87171'
+                            const oc=op>=70?'#4ade80':op>=35?'#7c6ff7':'#f87171'
                             return (
                               <div key={uid} style={{ marginBottom:14 }}>
                                 <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:5 }}>
                                   <div style={{ display:'flex',alignItems:'center',gap:7 }}>
-                                    <div style={{ width:24,height:24,borderRadius:'50%',background:isMe?'#6366f1':'#fb923c',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,color:'#fff' }}>{initials(pP.display_name)}</div>
-                                    <span style={{ fontSize:13,color:isMe?'#a5b4fc':'#9aa0b0',fontWeight:500 }}>{isMe?'Sen':pP.display_name}</span>
+                                    <div style={{ width:24,height:24,borderRadius:'50%',background:isMe?'#7c6ff7':'#fb923c',display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,fontWeight:700,color:'#fff' }}>{initials(pP.display_name)}</div>
+                                    <span style={{ fontSize:13,color:isMe?'#a5b4fc':'var(--text2)',fontWeight:500 }}>{isMe?'Sen':pP.display_name}</span>
                                   </div>
                                   <div style={{ display:'flex',gap:10,fontSize:11 }}>
-                                    <span style={{ color:'#5c6475' }}>Bugün <b style={{ color:'#e2e6f0' }}>{tp}%</b></span>
-                                    <span style={{ color:'#5c6475' }}>Genel <b style={{ color:oc }}>{op}%</b></span>
+                                    <span style={{ color:'var(--text3)' }}>Bugün <b style={{ color:'var(--text)' }}>{tp}%</b></span>
+                                    <span style={{ color:'var(--text3)' }}>Genel <b style={{ color:oc }}>{op}%</b></span>
                                   </div>
                                 </div>
-                                <div style={{ height:6,background:'#242830',borderRadius:99,overflow:'hidden' }}>
+                                <div style={{ height:6,background:'var(--surface2)',borderRadius:99,overflow:'hidden' }}>
                                   <div style={{ height:'100%',width:`${op}%`,background:oc,borderRadius:99,transition:'width 0.5s' }}/>
                                 </div>
                               </div>
                             )
                           })}
                           <div style={{ marginTop:14,display:'flex',gap:7,flexWrap:'wrap' }}>
-                            {str>=7&&<span style={{ padding:'5px 11px',background:'rgba(251,146,60,0.1)',border:'1px solid rgba(251,146,60,0.3)',borderRadius:99,fontSize:11,color:'#fb923c' }}>🔥 {str} günlük seri!</span>}
-                            {progPct>=50&&<span style={{ padding:'5px 11px',background:'rgba(52,211,153,0.1)',border:'1px solid rgba(52,211,153,0.3)',borderRadius:99,fontSize:11,color:'#34d399' }}>⭐ Yarı yolda!</span>}
-                            {qualityScore>=80&&<span style={{ padding:'5px 11px',background:'rgba(99,102,241,0.1)',border:'1px solid rgba(99,102,241,0.3)',borderRadius:99,fontSize:11,color:'#a5b4fc' }}>💎 Yüksek kalite!</span>}
-                            {combinedToday===100&&<span style={{ padding:'5px 11px',background:'rgba(52,211,153,0.1)',border:'1px solid rgba(52,211,153,0.3)',borderRadius:99,fontSize:11,color:'#34d399' }}>✅ Bugün tam puan!</span>}
+                            {str>=7&&<span style={{ padding:'5px 11px',background:'rgba(251,146,60,0.1)',border:'1.5px solid rgba(251,146,60,0.3)',borderRadius:99,fontSize:11,color:'#fb923c' }}>🔥 {str} günlük seri!</span>}
+                            {progPct>=50&&<span style={{ padding:'5px 11px',background:'rgba(52,211,153,0.1)',border:'1.5px solid rgba(52,211,153,0.3)',borderRadius:99,fontSize:11,color:'#4ade80' }}>⭐ Yarı yolda!</span>}
+                            {qualityScore>=80&&<span style={{ padding:'5px 11px',background:'rgba(99,102,241,0.1)',border:'1.5px solid rgba(99,102,241,0.3)',borderRadius:99,fontSize:11,color:'#a5b4fc' }}>💎 Yüksek kalite!</span>}
+                            {combinedToday===100&&<span style={{ padding:'5px 11px',background:'rgba(52,211,153,0.1)',border:'1.5px solid rgba(52,211,153,0.3)',borderRadius:99,fontSize:11,color:'#4ade80' }}>✅ Bugün tam puan!</span>}
                           </div>
                         </div>
                       )}
 
-                      <div style={{ marginTop:14,paddingTop:12,borderTop:'1px solid #2e3340',display:'flex',gap:8 }}>
-                        <span style={{ fontSize:11,color:'#5c6475',alignSelf:'center',flex:1 }}>{rem} gün kaldı</span>
+                      <div style={{ marginTop:14,paddingTop:12,borderTop:'1.5px solid #2e3340',display:'flex',gap:8 }}>
+                        <span style={{ fontSize:11,color:'var(--text3)',alignSelf:'center',flex:1 }}>{rem} gün kaldı</span>
                         {isCreator
                           ?<button onClick={()=>setDeleteConfirm(goal.id)} style={{ ...S.btn('danger'),padding:'7px 12px',fontSize:12 }}>🗑 Sil</button>
                           :<button onClick={()=>setLeaveConfirm(goal.id)} style={{ ...S.btn('secondary'),padding:'7px 12px',fontSize:12,color:'#f87171' }}>↩ Ayrıl</button>
@@ -598,14 +598,14 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
       {editingTasks&&(
         <>
           <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.8)',zIndex:400 }} onClick={()=>setEditingTasks(null)}/>
-          <div style={{ position:'fixed',top:'10%',left:'50%',transform:'translateX(-50%)',background:'#1c1f26',border:'1px solid #2e3340',borderRadius:16,padding:20,zIndex:401,width:'min(400px,90vw)',maxHeight:'80vh',overflowY:'auto' }}>
-            <div style={{ fontSize:15,fontWeight:600,color:'#e2e6f0',marginBottom:6 }}>Kendi Görevlerimi Düzenle</div>
-            <div style={{ fontSize:12,color:'#5c6475',marginBottom:14 }}>Hedef ortak, görevler kişisel. Arkadaşın farklı görevler ekleyebilir.</div>
+          <div style={{ position:'fixed',top:'10%',left:'50%',transform:'translateX(-50%)',background:'var(--surface)',border:'1.5px solid #2e3340',borderRadius:16,padding:20,zIndex:401,width:'min(400px,90vw)',maxHeight:'80vh',overflowY:'auto' }}>
+            <div style={{ fontSize:15,fontWeight:700,color:'var(--text)',marginBottom:6 }}>Kendi Görevlerimi Düzenle</div>
+            <div style={{ fontSize:12,color:'var(--text3)',marginBottom:14 }}>Hedef ortak, görevler kişisel. Arkadaşın farklı görevler ekleyebilir.</div>
             <div style={{ display:'flex',flexDirection:'column',gap:7,marginBottom:10 }}>
               {editTaskList.map((t,i)=>(
                 <div key={i} style={{ display:'flex',gap:7 }}>
                   <input style={S.input} placeholder={`Görev ${i+1}`} value={t.name||''} onChange={e=>setEditTaskList(p=>p.map((x,j)=>j===i?{...x,name:e.target.value}:x))}/>
-                  <button onClick={()=>setEditTaskList(p=>p.filter((_,j)=>j!==i))} style={{ width:36,height:42,background:'#242830',border:'1px solid #2e3340',borderRadius:9,color:'#9aa0b0',cursor:'pointer',flexShrink:0 }}>✕</button>
+                  <button onClick={()=>setEditTaskList(p=>p.filter((_,j)=>j!==i))} style={{ width:36,height:42,background:'var(--surface2)',border:'1.5px solid #2e3340',borderRadius:9,color:'var(--text2)',cursor:'pointer',flexShrink:0 }}>✕</button>
                 </div>
               ))}
             </div>
@@ -621,10 +621,10 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
       {deleteConfirm&&(
         <>
           <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',zIndex:400 }} onClick={()=>setDeleteConfirm(null)}/>
-          <div style={{ position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'#1c1f26',border:'1px solid #2e3340',borderRadius:16,padding:24,zIndex:401,width:300,textAlign:'center' }}>
+          <div style={{ position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'var(--surface)',border:'1.5px solid #2e3340',borderRadius:16,padding:24,zIndex:401,width:300,textAlign:'center' }}>
             <div style={{ fontSize:32,marginBottom:10 }}>🗑️</div>
-            <div style={{ fontSize:15,fontWeight:600,color:'#e2e6f0',marginBottom:6 }}>Hedefi Sil</div>
-            <div style={{ fontSize:13,color:'#5c6475',marginBottom:20 }}>Tüm üyeler için silinecek. Geri alınamaz.</div>
+            <div style={{ fontSize:15,fontWeight:700,color:'var(--text)',marginBottom:6 }}>Hedefi Sil</div>
+            <div style={{ fontSize:13,color:'var(--text3)',marginBottom:20 }}>Tüm üyeler için silinecek. Geri alınamaz.</div>
             <div style={{ display:'flex',gap:9 }}>
               <button onClick={()=>setDeleteConfirm(null)} style={{ ...S.btn('secondary'),flex:1 }}>İptal</button>
               <button onClick={()=>deleteGoal(deleteConfirm)} style={{ ...S.btn('danger'),flex:1 }}>Sil</button>
@@ -636,10 +636,10 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
       {leaveConfirm&&(
         <>
           <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',zIndex:400 }} onClick={()=>setLeaveConfirm(null)}/>
-          <div style={{ position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'#1c1f26',border:'1px solid #2e3340',borderRadius:16,padding:24,zIndex:401,width:300,textAlign:'center' }}>
+          <div style={{ position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'var(--surface)',border:'1.5px solid #2e3340',borderRadius:16,padding:24,zIndex:401,width:300,textAlign:'center' }}>
             <div style={{ fontSize:32,marginBottom:10 }}>↩</div>
-            <div style={{ fontSize:15,fontWeight:600,color:'#e2e6f0',marginBottom:6 }}>Hedeften Ayrıl</div>
-            <div style={{ fontSize:13,color:'#5c6475',marginBottom:20 }}>Sadece sen ayrılırsın.</div>
+            <div style={{ fontSize:15,fontWeight:700,color:'var(--text)',marginBottom:6 }}>Hedeften Ayrıl</div>
+            <div style={{ fontSize:13,color:'var(--text3)',marginBottom:20 }}>Sadece sen ayrılırsın.</div>
             <div style={{ display:'flex',gap:9 }}>
               <button onClick={()=>setLeaveConfirm(null)} style={{ ...S.btn('secondary'),flex:1 }}>İptal</button>
               <button onClick={()=>leaveGoal(leaveConfirm)} style={{ ...S.btn('danger'),flex:1 }}>Ayrıl</button>
