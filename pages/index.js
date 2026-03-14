@@ -90,37 +90,38 @@ function getETA(tasks, logs, startDate, totalDays) {
   return { text:`Mevcut tempo ile ${need} gün gerekiyor (${need-left} gün gecikme)`, color:'var(--mid)' }
 }
 
-/* ─── Shared styles ──────────────────────────────────────────────────────── */
+/* ─── Shared styles ──────────────────────────────────────────────────────────────────────────────────── */
 const css = {
   card: {
-    background:'var(--surface)', border:'1px solid var(--border)',
-    borderRadius:'var(--r-xl)', padding:'20px', marginBottom:16,
+    background:'var(--surface)', border:'1.5px solid var(--border)',
+    borderRadius:'var(--r-xl)', padding:0, marginBottom:12, overflow:'hidden',
   },
   label: {
-    fontSize:11, fontWeight:600, textTransform:'uppercase',
+    fontSize:11, fontWeight:700, textTransform:'uppercase',
     letterSpacing:'0.08em', color:'var(--text3)',
   },
   input: {
-    width:'100%', background:'var(--surface2)', border:'1px solid var(--border)',
-    borderRadius:'var(--r-md)', padding:'11px 14px', color:'var(--text)',
-    fontSize:15, outline:'none', WebkitAppearance:'none',
+    width:'100%', background:'var(--surface2)', border:'1.5px solid var(--border)',
+    borderRadius:'var(--r-md)', padding:'12px 15px', color:'var(--text)',
+    fontSize:15, fontWeight:500, outline:'none', WebkitAppearance:'none',
   },
   btn: (variant='primary') => ({
-    padding: variant==='primary' ? '12px 20px' : '10px 16px',
+    padding: variant==='primary' ? '13px 22px' : '11px 16px',
     background: variant==='primary' ? 'var(--accent)' : 'var(--surface2)',
-    border: variant==='primary' ? 'none' : '1px solid var(--border)',
-    borderRadius:'var(--r-md)', color: variant==='primary' ? '#fff' : 'var(--text2)',
-    fontSize:14, fontWeight:600, cursor:'pointer',
+    border: variant==='primary' ? 'none' : '1.5px solid var(--border)',
+    borderRadius:'var(--r-lg)', color: variant==='primary' ? '#fff' : 'var(--text2)',
+    fontSize:14, fontWeight:700, cursor:'pointer',
   }),
   iconBtn: {
-    width:36, height:36, background:'var(--surface2)', border:'1px solid var(--border)',
-    borderRadius:'var(--r-sm)', color:'var(--text3)', cursor:'pointer',
-    display:'flex', alignItems:'center', justifyContent:'center', fontSize:15,
+    width:34, height:34, background:'var(--surface2)', border:'1.5px solid var(--border)',
+    borderRadius:'var(--r-md)', color:'var(--text3)', cursor:'pointer',
+    display:'flex', alignItems:'center', justifyContent:'center', fontSize:14,
   },
   tab: (active) => ({
     flex:1, padding:'9px 8px', background: active?'var(--surface)':'transparent',
-    border:'none', borderRadius:'var(--r-sm)', color: active?'var(--text)':'var(--text3)',
-    fontSize:13, fontWeight: active?600:400, cursor:'pointer', transition:'all 0.15s',
+    border: active?'1.5px solid var(--border)':'1.5px solid transparent',
+    borderRadius:'var(--r-md)', color: active?'var(--text)':'var(--text3)',
+    fontSize:13, fontWeight: active?700:500, cursor:'pointer', transition:'all 0.15s',
   }),
 }
 
@@ -263,13 +264,13 @@ export default function Home() {
       {/* Header */}
       <div style={{ padding:'14px 16px 0', display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:0 }}>
         <div>
-          <div style={{ fontSize:20, fontWeight:700, letterSpacing:'-0.02em' }}>
+          <div style={{ fontSize:21, fontWeight:800, letterSpacing:'-0.03em' }}>
             Hedef<span style={{ color:'var(--accent)' }}>.</span>Takip
           </div>
           <div style={{ fontSize:12, color:'var(--text3)', marginTop:2 }}>{dateLabel}</div>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-          <button onClick={() => setShowOnboarding(true)} style={{ width:34, height:34, background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:'50%', color:'var(--text3)', fontSize:15, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }} title="Nasıl kullanılır?">?</button>
+          <button onClick={() => setShowOnboarding(true)} style={{ width:34, height:34, background:'var(--surface2)', border:'1.5px solid var(--border)', borderRadius:'50%', color:'var(--text3)', fontSize:15, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }} title="Nasıl kullanılır?">?</button>
           <div onClick={() => setShowProfile(true)} style={{ cursor:'pointer' }} title="Profilim">
             {user.user_metadata?.avatar_url
               ? <img src={user.user_metadata.avatar_url} alt="" style={{ width:36, height:36, borderRadius:'50%', border:'2px solid var(--border)', display:'block' }} />
@@ -283,9 +284,9 @@ export default function Home() {
 
       {/* Ana Sekmeler */}
       <div style={{ padding:'12px 16px 0' }}>
-        <div style={{ display:'flex', background:'var(--surface2)', borderRadius:12, padding:4, gap:2 }}>
+        <div style={{ display:'flex', background:'var(--surface2)', borderRadius:16, padding:4, gap:3 }}>
           {[['personal','🎯','Hedeflerim'],['shared','🤝','Ortak']].map(([t,icon,label])=>(
-            <button key={t} onClick={()=>setMainTab(t)} style={{ flex:1, padding:'9px 8px', background:mainTab===t?'var(--surface)':`transparent`, border:mainTab===t?'1px solid var(--border)':`1px solid transparent`, borderRadius:9, color:mainTab===t?'var(--text)':`var(--text3)`, fontSize:13, fontWeight:mainTab===t?600:400, cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:6, transition:'all 0.15s' }}>
+            <button key={t} onClick={()=>setMainTab(t)} style={{ flex:1, padding:'10px 8px', background:mainTab===t?'var(--surface)':`transparent`, border:mainTab===t?'1.5px solid var(--border)':`1.5px solid transparent`, borderRadius:13, color:mainTab===t?'var(--text)':`var(--text3)`, fontSize:13, fontWeight:mainTab===t?700:500, cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:6, transition:'all 0.15s' }}>
               {icon} {label}
             </button>
           ))}
@@ -298,9 +299,9 @@ export default function Home() {
           {goals.length === 0 ? (
             <div style={{ textAlign:'center', padding:'60px 24px', color:'var(--text3)' }}>
               <div style={{ fontSize:40, marginBottom:12 }}>🎯</div>
-              <div style={{ fontSize:16, fontWeight:600, color:'var(--text2)', marginBottom:6 }}>Henüz hedef yok</div>
+              <div style={{ fontSize:16, fontWeight:800, color:'var(--text2)', marginBottom:6 }}>Henüz hedef yok</div>
               <div style={{ fontSize:14, marginBottom:20 }}>Aşağıdaki butona basarak başla</div>
-              <button onClick={()=>setShowOnboarding(true)} style={{ padding:'9px 18px', background:'transparent', border:'1px solid var(--border)', borderRadius:99, color:'var(--text3)', fontSize:13, cursor:'pointer', fontFamily:'inherit' }}>? Nasıl çalışır</button>
+              <button onClick={()=>setShowOnboarding(true)} style={{ padding:'9px 18px', background:'transparent', border:'1.5px solid var(--border)', borderRadius:99, color:'var(--text3)', fontSize:13, cursor:'pointer', fontFamily:'inherit' }}>? Nasıl çalışır</button>
             </div>
           ) : goals.map(goal => (
             <GoalCard
@@ -345,7 +346,7 @@ export default function Home() {
         <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', zIndex:50 }}>
           <button
             onClick={() => { setEditGoal(null); setShowModal(true) }}
-            style={{ padding:'13px 28px', background:'var(--accent)', border:'none', borderRadius:99, color:'#fff', fontSize:14, fontWeight:600, boxShadow:'0 4px 24px rgba(99,102,241,0.4)', display:'flex', alignItems:'center', gap:8 }}
+            style={{ padding:'13px 28px', background:'var(--accent)', border:'none', borderRadius:99, color:'#fff', fontSize:14, fontWeight:700, boxShadow:'0 4px 24px rgba(124,111,247,0.4)', display:'flex', alignItems:'center', gap:8 }}
           >
             + Yeni Hedef
           </button>
@@ -386,7 +387,7 @@ export default function Home() {
 
       {/* Toast */}
       {toast && (
-        <div style={{ position:'fixed', bottom:80, left:'50%', transform:'translateX(-50%)', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:'var(--r-md)', padding:'10px 18px', fontSize:13, color:'var(--text)', zIndex:999, whiteSpace:'nowrap', boxShadow:'0 4px 20px rgba(0,0,0,0.4)' }}>
+        <div style={{ position:'fixed', bottom:80, left:'50%', transform:'translateX(-50%)', background:'var(--surface)', border:'1.5px solid var(--border)', borderRadius:'var(--r-md)', padding:'10px 18px', fontSize:13, color:'var(--text)', zIndex:999, whiteSpace:'nowrap', boxShadow:'0 4px 20px rgba(0,0,0,0.4)' }}>
           {toast}
         </div>
       )}
@@ -408,13 +409,13 @@ function LoginPage({ onLogin, dateLabel }) {
 
         <div style={{ ...css.card, padding:28 }}>
           <div style={{ fontSize:36, marginBottom:16, textAlign:'center' }}>🎯</div>
-          <div style={{ fontSize:18, fontWeight:600, marginBottom:8, textAlign:'center' }}>Hoş Geldin</div>
+          <div style={{ fontSize:18, fontWeight:700, marginBottom:8, textAlign:'center' }}>Hoş Geldin</div>
           <div style={{ fontSize:14, color:'var(--text2)', marginBottom:28, textAlign:'center', lineHeight:1.6 }}>
             Günlük hedeflerini takip et, kaliteni ölç, serine devam et.
           </div>
           <button
             onClick={onLogin}
-            style={{ width:'100%', padding:'13px 20px', background:'#fff', border:'none', borderRadius:'var(--r-md)', color:'#111', fontSize:14, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}
+            style={{ width:'100%', padding:'13px 20px', background:'#fff', border:'none', borderRadius:'var(--r-md)', color:'#111', fontSize:14, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:10 }}
           >
             <GoogleIcon />
             Google ile Giriş Yap
@@ -486,8 +487,8 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
           <div style={{ flex:1 }}>
             <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
-              <span style={{ fontSize:15, fontWeight:600, color:'var(--text)' }}>{goal.name}</span>
-              {streak>=3 && <span style={{ fontSize:11, background:'rgba(251,146,60,0.12)', border:'1px solid rgba(251,146,60,0.3)', color:'var(--fire)', borderRadius:99, padding:'1px 8px' }}>🔥{streak}</span>}
+              <span style={{ fontSize:15, fontWeight:700, color:'var(--text)' }}>{goal.name}</span>
+              {streak>=3 && <span style={{ fontSize:11, background:'rgba(251,146,60,0.12)', border:'1.5px solid rgba(251,146,60,0.3)', color:'var(--fire)', borderRadius:99, padding:'1px 8px' }}>🔥{streak}</span>}
             </div>
             <div style={{ height:4, background:'var(--surface2)', borderRadius:99, overflow:'hidden', marginBottom:6 }}>
               <div style={{ height:'100%', width:`${op}%`, background:gradBg, borderRadius:99, transition:'width 0.5s' }} />
@@ -521,7 +522,7 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
             ].map(([l,v,c])=>(
               <div key={l} style={{ background:'var(--surface)', padding:'10px 0', textAlign:'center' }}>
                 <div style={{ fontSize:9, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:3 }}>{l}</div>
-                <div style={{ fontSize:16, fontWeight:700, color:c }}>{v}</div>
+                <div style={{ fontSize:16, fontWeight:800, color:c }}>{v}</div>
               </div>
             ))}
           </div>
@@ -532,7 +533,7 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
           </div>
 
           {streak >= 3 && (
-            <div style={{ margin:'10px 16px 0', background:'var(--fire-bg)', border:'1px solid rgba(251,146,60,0.25)', borderRadius:'var(--r-md)', padding:'9px 13px', display:'flex', alignItems:'center', gap:10 }}>
+            <div style={{ margin:'10px 16px 0', background:'var(--fire-bg)', border:'1.5px solid rgba(251,146,60,0.25)', borderRadius:'var(--r-md)', padding:'9px 13px', display:'flex', alignItems:'center', gap:10 }}>
               <span style={{ fontSize:18 }}>🔥</span>
               <div style={{ fontSize:14, fontWeight:700, color:'var(--fire)' }}>{streak} günlük seri!</div>
             </div>
@@ -542,7 +543,7 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
             {BADGES.map(b => {
               const e = earned.has(b.id)
               return (
-                <div key={b.id} style={{ display:'flex', alignItems:'center', gap:4, padding:'4px 9px', borderRadius:99, background:e?'var(--accent-light)':'transparent', border:`1px solid ${e?'rgba(99,102,241,0.3)':'var(--border)'}`, opacity:e?1:0.3, fontSize:11 }}>
+                <div key={b.id} style={{ display:'flex', alignItems:'center', gap:4, padding:'4px 9px', borderRadius:99, background:e?'var(--accent-light)':'transparent', border:`1.5px solid ${e?'rgba(124,111,247,0.3)':'var(--border)'}`, opacity:e?1:0.3, fontSize:11 }}>
                   <span>{b.icon}</span><span style={{ color:e?'var(--text)':'var(--text3)' }}>{b.label}</span>
                 </div>
               )
@@ -568,18 +569,18 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                     const log = todayLogs.find(l=>l.task_id===t.id)
                     const q   = log?.quality
                     const qBg = { good:'var(--good-bg)', mid:'var(--mid-bg)', bad:'var(--bad-bg)' }
-                    const qBorder = { good:'rgba(52,211,153,0.3)', mid:'rgba(251,191,36,0.3)', bad:'rgba(248,113,113,0.3)' }
+                    const qBorder = { good:'rgba(74,222,128,0.3)', mid:'rgba(251,191,36,0.3)', bad:'rgba(248,113,113,0.3)' }
                     return (
-                      <div key={t.id} style={{ background:q?qBg[q]:'var(--surface2)', border:`1px solid ${q?qBorder[q]:'var(--border)'}`, borderRadius:'var(--r-md)', overflow:'hidden' }}>
+                      <div key={t.id} style={{ background:q?qBg[q]:'var(--surface2)', border:`1.5px solid ${q?qBorder[q]:'var(--border)'}`, borderRadius:'var(--r-md)', overflow:'hidden' }}>
                         <div style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', cursor:'pointer' }} onClick={()=>onToggleTask(t.id)}>
                           <div style={{ width:22, height:22, borderRadius:6, border:`2px solid ${q?`var(--${q})`:'var(--border2)'}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, flexShrink:0, background:q?qBg[q]:'transparent', color:`var(--${q||'text3'})`, fontWeight:700 }}>{q ? QSym[q] : ''}</div>
                           <div style={{ flex:1, fontSize:14, textDecoration:q?'line-through':'none', color:q?'var(--text3)':'var(--text)' }}>{t.name}</div>
-                          {q && <span style={{ fontSize:11, fontWeight:600, color:`var(--${q})`, background:qBg[q], padding:'2px 8px', borderRadius:99 }}>{QLabel[q]}</span>}
+                          {q && <span style={{ fontSize:11, fontWeight:700, color:`var(--${q})`, background:qBg[q], padding:'2px 8px', borderRadius:99 }}>{QLabel[q]}</span>}
                         </div>
                         {q && (
                           <div style={{ display:'flex', gap:6, padding:'0 14px 12px' }}>
                             {['good','mid','bad'].map(qv => (
-                              <button key={qv} onClick={()=>onSetQuality(t.id,qv)} style={{ flex:1, padding:'7px 4px', borderRadius:'var(--r-sm)', border:`1.5px solid ${q===qv?`var(--${qv})`:'var(--border)'}`, background:q===qv?qBg[qv]:'transparent', color:q===qv?`var(--${qv})`:'var(--text3)', fontSize:12, fontWeight:600, cursor:'pointer' }}>{QLabel[qv]}</button>
+                              <button key={qv} onClick={()=>onSetQuality(t.id,qv)} style={{ flex:1, padding:'7px 4px', borderRadius:'var(--r-md)', border:`1.5px solid ${q===qv?`var(--${qv})`:'var(--border)'}`, background:q===qv?qBg[qv]:'transparent', color:q===qv?`var(--${qv})`:'var(--text3)', fontSize:12, fontWeight:700, cursor:'pointer' }}>{QLabel[qv]}</button>
                             ))}
                           </div>
                         )}
@@ -614,14 +615,14 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                   const scColor = sc>=70?'var(--good)':sc>=30?'var(--mid)':'var(--text3)'
                   const note    = notes[hkey]||''
                   return (
-                    <div key={ds} style={{ background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:'var(--r-md)', marginBottom:8, overflow:'hidden' }}>
+                    <div key={ds} style={{ background:'var(--surface2)', border:'1.5px solid var(--border)', borderRadius:'var(--r-md)', marginBottom:8, overflow:'hidden' }}>
                       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 14px', cursor:'pointer' }} onClick={()=>onToggleHist(hkey)}>
                         <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:13 }}>
                           <span style={{ color:'var(--text3)', fontSize:11 }}>{hIsOpen?'▾':'▸'}</span>
                           <span>{DAYS[d.getDay()]}, {d.getDate()} {MONTHS[d.getMonth()]}</span>
                           {note && <span style={{ fontSize:11, color:'var(--accent)' }}>📝</span>}
                         </div>
-                        <span style={{ fontSize:13, fontWeight:600, color:scColor }}>{sc>0?`${sc}%`:'—'}</span>
+                        <span style={{ fontSize:13, fontWeight:700, color:scColor }}>{sc>0?`${sc}%`:'—'}</span>
                       </div>
                       {hIsOpen && (
                         <div style={{ padding:'0 14px 14px', borderTop:'1px solid var(--border)' }}>
@@ -633,9 +634,9 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                                 <div style={{ flex:1, fontSize:13 }}>{t.name}</div>
                                 <div style={{ display:'flex', gap:4 }}>
                                   {['good','mid','bad'].map(qv=>(
-                                    <button key={qv} onClick={()=>onSetQuality(t.id,qv,ds)} style={{ padding:'4px 10px', borderRadius:'var(--r-sm)', border:`1px solid ${q===qv?`var(--${qv})`:'var(--border)'}`, background:q===qv?{ good:'var(--good-bg)', mid:'var(--mid-bg)', bad:'var(--bad-bg)' }[qv]:'transparent', color:q===qv?`var(--${qv})`:'var(--text3)', fontSize:11, fontWeight:500, cursor:'pointer' }}>{QLabel[qv]}</button>
+                                    <button key={qv} onClick={()=>onSetQuality(t.id,qv,ds)} style={{ padding:'4px 10px', borderRadius:'var(--r-md)', border:`1.5px solid ${q===qv?`var(--${qv})`:'var(--border)'}`, background:q===qv?{ good:'var(--good-bg)', mid:'var(--mid-bg)', bad:'var(--bad-bg)' }[qv]:'transparent', color:q===qv?`var(--${qv})`:'var(--text3)', fontSize:11, fontWeight:500, cursor:'pointer' }}>{QLabel[qv]}</button>
                                   ))}
-                                  <button onClick={()=>onRemoveLog(t.id,ds)} style={{ padding:'4px 8px', borderRadius:'var(--r-sm)', border:'1px solid var(--border)', background:'transparent', color:'var(--text3)', fontSize:11, cursor:'pointer' }}>—</button>
+                                  <button onClick={()=>onRemoveLog(t.id,ds)} style={{ padding:'4px 8px', borderRadius:'var(--r-md)', border:'1.5px solid var(--border)', background:'transparent', color:'var(--text3)', fontSize:11, cursor:'pointer' }}>—</button>
                                 </div>
                               </div>
                             )
@@ -711,7 +712,7 @@ function NoteSection({ goalId, ds, notes, noteInputs, onNoteChange, onSaveNote }
     <div style={{ marginTop:12 }}>
       <div style={{ ...css.label, marginBottom:6 }}>Günlük Not</div>
       {saved && (
-        <div style={{ background:'var(--accent-light)', border:'1px solid rgba(99,102,241,0.2)', borderRadius:'var(--r-md)', padding:'10px 12px', fontSize:13, color:'var(--text2)', marginBottom:8, lineHeight:1.6 }}>
+        <div style={{ background:'var(--accent-light)', border:'1.5px solid rgba(124,111,247,0.2)', borderRadius:'var(--r-md)', padding:'10px 12px', fontSize:13, color:'var(--text2)', marginBottom:8, lineHeight:1.6 }}>
           {saved}
         </div>
       )}
@@ -722,7 +723,7 @@ function NoteSection({ goalId, ds, notes, noteInputs, onNoteChange, onSaveNote }
         rows={2}
         style={{ ...css.input, fontSize:13, resize:'vertical', lineHeight:1.6 }}
       />
-      <button onClick={()=>onSaveNote(ds)} style={{ marginTop:6, padding:'7px 14px', background:'var(--surface2)', border:'1px solid var(--border)', borderRadius:'var(--r-sm)', color:'var(--text2)', fontSize:12, fontWeight:500, cursor:'pointer' }}>
+      <button onClick={()=>onSaveNote(ds)} style={{ marginTop:6, padding:'7px 14px', background:'var(--surface2)', border:'1.5px solid var(--border)', borderRadius:'var(--r-md)', color:'var(--text2)', fontSize:12, fontWeight:500, cursor:'pointer' }}>
         Kaydet
       </button>
     </div>
@@ -743,9 +744,9 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
 
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(10,12,18,0.88)', backdropFilter:'blur(6px)', zIndex:200, display:'flex', alignItems:'flex-end', justifyContent:'center', padding:'0' }} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div style={{ background:'var(--surface)', borderRadius:'20px 20px 0 0', padding:'24px 20px 40px', width:'100%', maxWidth:640, maxHeight:'90vh', overflowY:'auto' }}>
+      <div style={{ background:'var(--surface)', borderRadius:'26px 26px 0 0', padding:'26px 20px 44px', width:'100%', maxWidth:640, maxHeight:'90vh', overflowY:'auto' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-          <div style={{ fontSize:17, fontWeight:600 }}>{goal?'Hedefi Düzenle':'Yeni Hedef'}</div>
+          <div style={{ fontSize:18, fontWeight:800 }}>{goal?'Hedefi Düzenle':'Yeni Hedef'}</div>
           <button onClick={onClose} style={{ ...css.iconBtn }}>✕</button>
         </div>
 
@@ -823,12 +824,12 @@ function OnboardingModal({ onClose }) {
 
   return (
     <>
-      <div style={{ position:'fixed', inset:0, background:'rgba(10,12,18,0.85)', backdropFilter:'blur(4px)', zIndex:500 }} onClick={onClose} />
-      <div style={{ position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)', zIndex:501, width:'min(420px,92vw)', background:'#1c1f26', border:'1px solid #2e3340', borderRadius:20, overflow:'hidden' }}>
+      <div style={{ position:'fixed', inset:0, background:'rgba(5,6,10,0.88)', backdropFilter:'blur(6px)', zIndex:500 }} onClick={onClose} />
+      <div style={{ position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)', zIndex:501, width:'min(420px,92vw)', background:'var(--surface)', border:'1.5px solid var(--border)', borderRadius:24, overflow:'hidden' }}>
 
         {/* Progress bar */}
         <div style={{ height:3, background:'#242830' }}>
-          <div style={{ height:'100%', width:`${((step+1)/steps.length)*100}%`, background:'#6366f1', transition:'width 0.3s' }} />
+          <div style={{ height:'100%', width:`${((step+1)/steps.length)*100}%`, background:'#7c6ff7', transition:'width 0.3s' }} />
         </div>
 
         <div style={{ padding:'28px 24px 24px' }}>
@@ -838,22 +839,22 @@ function OnboardingModal({ onClose }) {
             <div style={{ fontSize:12, color:'#5c6475' }}>{step+1} / {steps.length}</div>
           </div>
 
-          <div style={{ fontSize:18, fontWeight:700, color:'#e2e6f0', marginBottom:10 }}>{s.title}</div>
-          <div style={{ fontSize:14, color:'#9aa0b0', lineHeight:1.7, marginBottom:16 }}>{s.desc}</div>
+          <div style={{ fontSize:18, fontWeight:800, color:'var(--text)', marginBottom:10 }}>{s.title}</div>
+          <div style={{ fontSize:14, fontWeight:500, color:'var(--text2)', lineHeight:1.7, marginBottom:16 }}>{s.desc}</div>
 
           {/* Tip kutusu */}
-          <div style={{ background:'rgba(99,102,241,0.08)', border:'1px solid rgba(99,102,241,0.2)', borderRadius:10, padding:'10px 14px', fontSize:13, color:'#a5b4fc', marginBottom:24 }}>
+          <div style={{ background:'rgba(124,111,247,0.08)', border:'1.5px solid rgba(124,111,247,0.2)', borderRadius:14, padding:'10px 14px', fontSize:13, color:'#a89cf7', marginBottom:24 }}>
             💡 {s.tip}
           </div>
 
           {/* Butonlar */}
           <div style={{ display:'flex', gap:10 }}>
             {step > 0 && (
-              <button onClick={()=>setStep(p=>p-1)} style={{ padding:'10px 16px', background:'#242830', border:'1px solid #2e3340', borderRadius:10, color:'#9aa0b0', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}>← Geri</button>
+              <button onClick={()=>setStep(p=>p-1)} style={{ padding:'10px 16px', background:'var(--surface2)', border:'1.5px solid var(--border)', borderRadius:14, color:'var(--text2)', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>← Geri</button>
             )}
             <button
               onClick={()=>isLast ? onClose() : setStep(p=>p+1)}
-              style={{ flex:1, padding:'11px 16px', background:'#6366f1', border:'none', borderRadius:10, color:'#fff', fontSize:14, fontWeight:600, cursor:'pointer', fontFamily:'inherit' }}
+              style={{ flex:1, padding:'11px 16px', background:'var(--accent)', border:'none', borderRadius:14, color:'#fff', fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}
             >
               {isLast ? '🚀 Başla!' : 'İleri →'}
             </button>
@@ -861,7 +862,7 @@ function OnboardingModal({ onClose }) {
 
           {/* Atla */}
           {!isLast && (
-            <button onClick={onClose} style={{ display:'block', width:'100%', marginTop:12, padding:'8px', background:'transparent', border:'none', color:'#5c6475', fontSize:12, cursor:'pointer', fontFamily:'inherit' }}>
+            <button onClick={onClose} style={{ display:'block', width:'100%', marginTop:12, padding:'8px', background:'transparent', border:'none', color:'var(--text3)', fontSize:12, cursor:'pointer', fontFamily:'inherit' }}>
               Atla
             </button>
           )}
