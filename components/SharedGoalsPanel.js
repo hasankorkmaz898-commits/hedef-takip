@@ -414,7 +414,7 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
                 </div>
 
                 {isOpen&&(
-                  <div style={{ borderTop:'1.5px solid #2e3340' }}>
+                  <div className="anim-expand" style={{ borderTop:'1.5px solid #2e3340' }}>
 
                     {/* Stats grid */}
                     <div style={{ display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:1,background:'var(--border)' }}>
