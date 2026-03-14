@@ -61,8 +61,6 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
   const [editTaskList,   setEditTaskList] = useState([])
   const [showCreate,     setShowCreate]   = useState(!!initialFriend)
   const [selectedFriend, setSelectedFriend]= useState(initialFriend)
-  const [newName,        setNewName]      = useState('')
-  const [newDays,        setNewDays]      = useState('')
   const [deleteConfirm,  setDeleteConfirm]= useState(null)
   const [leaveConfirm,   setLeaveConfirm] = useState(null)
   const [liveFlash,      setLiveFlash]    = useState({})
@@ -260,7 +258,7 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
     setInvitations(p=>p.filter(i=>i.id!==inv.id))
   }
 
-  async function createSharedGoal() {
+  async function createSharedGoal(newName, newDays) {
     if (!newName.trim()||!newDays||!selectedFriend) { alert('Lütfen tüm alanları doldur'); return }
     const { data:g, error:gErr } = await supabase.from('shared_goals').insert({
       name:newName.trim(), total_days:parseInt(newDays), start_date:todayStr(), created_by:user.id
@@ -337,38 +335,13 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
           )}
 
           {showCreate&&(
-            <div style={{ background:'var(--surface)',border:'1.5px solid rgba(99,102,241,0.35)',borderRadius:16,padding:18,marginBottom:16 }}>
-              <div style={{ fontSize:15,fontWeight:700,color:'var(--text)',marginBottom:14 }}>Yeni Ortak Hedef</div>
-              <div style={{ marginBottom:12 }}>
-                <span style={S.lbl}>Arkadaş Seç</span>
-                {friends.length===0
-                  ? <div style={{ fontSize:13,color:'#f87171',background:'rgba(248,113,113,0.08)',border:'1.5px solid rgba(248,113,113,0.2)',borderRadius:16,padding:'10px 12px' }}>Önce profil panelinden arkadaş ekle</div>
-                  : <div style={{ display:'flex',flexWrap:'wrap',gap:7 }}>
-                      {friends.map(f=>(
-                        <div key={f.id} onClick={()=>setSelectedFriend(f)} style={{ padding:'7px 13px',borderRadius:99,border:`1.5px solid ${selectedFriend?.id===f.id?'#7c6ff7':'var(--border)'}`,background:selectedFriend?.id===f.id?'rgba(99,102,241,0.15)':'transparent',color:selectedFriend?.id===f.id?'#a5b4fc':'var(--text2)',fontSize:13,cursor:'pointer',display:'flex',alignItems:'center',gap:6 }}>
-                          <div style={{ width:20,height:20,borderRadius:'50%',background:'#7c6ff7',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:'#fff' }}>{initials(f.display_name)}</div>
-                          {f.display_name}{selectedFriend?.id===f.id&&' ✓'}
-                        </div>
-                      ))}
-                    </div>
-                }
-              </div>
-              <div style={{ marginBottom:12 }}>
-                <span style={S.lbl}>Hedef Adı</span>
-                <input style={S.input} placeholder="örn: Birlikte 5km koş" value={newName} onChange={e=>setNewName(e.target.value)}/>
-              </div>
-              <div style={{ marginBottom:14 }}>
-                <span style={S.lbl}>Süre (gün)</span>
-                <input type="number" style={S.input} placeholder="örn: 30" value={newDays} onChange={e=>setNewDays(e.target.value)}/>
-              </div>
-              <div style={{ background:'rgba(99,102,241,0.07)',border:'1.5px solid rgba(99,102,241,0.2)',borderRadius:16,padding:'9px 12px',marginBottom:12,fontSize:12,color:'#a5b4fc' }}>
-                💡 Katıldıktan sonra herkes kendi görevlerini ekler.
-              </div>
-              <div style={{ display:'flex',gap:9 }}>
-                <button onClick={()=>setShowCreate(false)} style={S.btn('secondary')}>İptal</button>
-                <button onClick={createSharedGoal} style={{ ...S.btn('primary'),flex:1 }}>Davet Gönder</button>
-              </div>
-            </div>
+            <CreateGoalForm
+              friends={friends}
+              selectedFriend={selectedFriend}
+              onSelectFriend={setSelectedFriend}
+              onCancel={()=>setShowCreate(false)}
+              onSubmit={(name,days)=>createSharedGoal(name,days)}
+            />
           )}
 
           {goals.length===0&&!showCreate&&invitations.length===0&&(
@@ -603,13 +576,18 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
             <div style={{ fontSize:12,color:'var(--text3)',marginBottom:14 }}>Hedef ortak, görevler kişisel. Arkadaşın farklı görevler ekleyebilir.</div>
             <div style={{ display:'flex',flexDirection:'column',gap:7,marginBottom:10 }}>
               {editTaskList.map((t,i)=>(
-                <div key={i} style={{ display:'flex',gap:7 }}>
-                  <input style={S.input} placeholder={`Görev ${i+1}`} value={t.name||''} onChange={e=>setEditTaskList(p=>p.map((x,j)=>j===i?{...x,name:e.target.value}:x))}/>
+                <div key={t._key||i} style={{ display:'flex',gap:7 }}>
+                  <input
+                    style={S.input}
+                    placeholder={`Görev ${i+1}`}
+                    defaultValue={t.name||''}
+                    onBlur={e=>setEditTaskList(p=>p.map((x,j)=>j===i?{...x,name:e.target.value}:x))}
+                  />
                   <button onClick={()=>setEditTaskList(p=>p.filter((_,j)=>j!==i))} style={{ width:36,height:42,background:'var(--surface2)',border:'1.5px solid #2e3340',borderRadius:9,color:'var(--text2)',cursor:'pointer',flexShrink:0 }}>✕</button>
                 </div>
               ))}
             </div>
-            <button onClick={()=>setEditTaskList(p=>[...p,{name:''}])} style={{ ...S.btn('ghost'),marginBottom:16,fontSize:12 }}>+ Görev Ekle</button>
+            <button onClick={()=>setEditTaskList(p=>[...p,{name:'', _key: Date.now()}])} style={{ ...S.btn('ghost'),marginBottom:16,fontSize:12 }}>+ Görev Ekle</button>
             <div style={{ display:'flex',gap:9 }}>
               <button onClick={()=>setEditingTasks(null)} style={S.btn('secondary')}>İptal</button>
               <button onClick={()=>saveMyTasks(editingTasks)} style={{ ...S.btn('primary'),flex:1 }}>Kaydet</button>
@@ -648,5 +626,72 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
         </>
       )}
     </>
+  )
+}
+
+/* ─── Create Goal Form — ayrı component, her render'da focus kaybolmasın ── */
+function CreateGoalForm({ friends, selectedFriend, onSelectFriend, onCancel, onSubmit }) {
+  const nameRef = useRef(null)
+  const daysRef = useRef(null)
+
+  function initials(n) { return (n||'?').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2) }
+
+  function handleSubmit() {
+    const name = nameRef.current?.value?.trim() || ''
+    const days = daysRef.current?.value?.trim() || ''
+    onSubmit(name, days)
+  }
+
+  return (
+    <div style={{ background:'var(--surface)',border:'1.5px solid rgba(124,111,247,0.35)',borderRadius:20,padding:18,marginBottom:16 }}>
+      <div style={{ fontSize:15,fontWeight:800,color:'var(--text)',marginBottom:14 }}>Yeni Ortak Hedef</div>
+
+      <div style={{ marginBottom:12 }}>
+        <span style={{ fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',color:'var(--text3)',marginBottom:7,display:'block' }}>Arkadaş Seç</span>
+        {friends.length===0
+          ? <div style={{ fontSize:13,color:'#f87171',background:'rgba(248,113,113,0.08)',border:'1.5px solid rgba(248,113,113,0.2)',borderRadius:14,padding:'10px 12px' }}>Önce profil panelinden arkadaş ekle</div>
+          : <div style={{ display:'flex',flexWrap:'wrap',gap:7 }}>
+              {friends.map(f=>(
+                <div key={f.id} onClick={()=>onSelectFriend(f)} style={{ padding:'7px 13px',borderRadius:99,border:`1.5px solid ${selectedFriend?.id===f.id?'#7c6ff7':'var(--border)'}`,background:selectedFriend?.id===f.id?'rgba(124,111,247,0.15)':'transparent',color:selectedFriend?.id===f.id?'#a89cf7':'var(--text2)',fontSize:13,cursor:'pointer',display:'flex',alignItems:'center',gap:6 }}>
+                  <div style={{ width:20,height:20,borderRadius:'50%',background:'#7c6ff7',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:'#fff' }}>{initials(f.display_name)}</div>
+                  {f.display_name}{selectedFriend?.id===f.id&&' ✓'}
+                </div>
+              ))}
+            </div>
+        }
+      </div>
+
+      <div style={{ marginBottom:12 }}>
+        <span style={{ fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',color:'var(--text3)',marginBottom:7,display:'block' }}>Hedef Adı</span>
+        <input
+          ref={nameRef}
+          style={{ width:'100%',background:'var(--bg)',border:'1.5px solid var(--border)',borderRadius:14,padding:'11px 14px',color:'var(--text)',fontSize:14,fontWeight:500,outline:'none',fontFamily:'inherit' }}
+          placeholder="örn: Birlikte 5km koş"
+          defaultValue=""
+          autoComplete="off"
+        />
+      </div>
+
+      <div style={{ marginBottom:14 }}>
+        <span style={{ fontSize:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'0.08em',color:'var(--text3)',marginBottom:7,display:'block' }}>Süre (gün)</span>
+        <input
+          ref={daysRef}
+          type="number"
+          style={{ width:'100%',background:'var(--bg)',border:'1.5px solid var(--border)',borderRadius:14,padding:'11px 14px',color:'var(--text)',fontSize:14,fontWeight:500,outline:'none',fontFamily:'inherit' }}
+          placeholder="örn: 30"
+          defaultValue=""
+          autoComplete="off"
+        />
+      </div>
+
+      <div style={{ background:'rgba(124,111,247,0.07)',border:'1.5px solid rgba(124,111,247,0.2)',borderRadius:14,padding:'9px 12px',marginBottom:14,fontSize:12,color:'#a89cf7' }}>
+        💡 Katıldıktan sonra herkes kendi görevlerini ekler.
+      </div>
+
+      <div style={{ display:'flex',gap:9 }}>
+        <button onClick={onCancel} style={{ padding:'11px 16px',borderRadius:14,fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:'inherit',background:'var(--surface2)',border:'1.5px solid var(--border)',color:'var(--text2)' }}>İptal</button>
+        <button onClick={handleSubmit} style={{ flex:1,padding:'11px 16px',borderRadius:14,fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:'inherit',background:'var(--accent)',border:'none',color:'#fff' }}>Davet Gönder</button>
+      </div>
+    </div>
   )
 }
