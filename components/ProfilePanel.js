@@ -3,56 +3,56 @@ import { createClient } from '../lib/supabase'
 
 const css = {
   overlay: {
-    position: 'fixed', inset: 0, background: 'rgba(10,12,18,0.7)',
-    backdropFilter: 'blur(4px)', zIndex: 300,
+    position: 'fixed', inset: 0, background: 'rgba(5,6,10,0.88)',
+    backdropFilter: 'blur(6px)', zIndex: 300,
   },
   panel: {
     position: 'fixed', top: 0, right: 0, bottom: 0, width: '100%', maxWidth: 380,
-    background: '#1c1f26', borderLeft: '1px solid #2e3340',
+    background: 'var(--surface)', borderLeft: '1.5px solid var(--border)',
     zIndex: 301, display: 'flex', flexDirection: 'column', overflowY: 'auto',
   },
   header: {
-    padding: '20px 20px 16px', borderBottom: '1px solid #2e3340',
+    padding: '20px 20px 16px', borderBottom: '1.5px solid var(--border)',
     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
   },
-  title: { fontSize: 16, fontWeight: 600, color: '#e2e6f0' },
+  title: { fontSize: 17, fontWeight: 800, color: 'var(--text)' },
   closeBtn: {
-    width: 32, height: 32, background: '#242830', border: '1px solid #2e3340',
-    borderRadius: 8, color: '#9aa0b0', cursor: 'pointer', display: 'flex',
-    alignItems: 'center', justifyContent: 'center', fontSize: 16,
+    width: 34, height: 34, background: 'var(--surface2)', border: '1.5px solid var(--border)',
+    borderRadius: 12, color: 'var(--text2)', cursor: 'pointer', display: 'flex',
+    alignItems: 'center', justifyContent: 'center', fontSize: 15,
   },
-  section: { padding: '16px 20px', borderBottom: '1px solid #2e3340' },
+  section: { padding: '16px 20px', borderBottom: '1.5px solid var(--border)' },
   sectionTitle: {
-    fontSize: 11, fontWeight: 600, textTransform: 'uppercase',
-    letterSpacing: '0.08em', color: '#5c6475', marginBottom: 12,
+    fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
+    letterSpacing: '0.08em', color: 'var(--text3)', marginBottom: 12,
   },
   avatar: {
-    width: 56, height: 56, borderRadius: '50%', background: '#6366f1',
+    width: 56, height: 56, borderRadius: '50%', background: 'var(--accent)',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     fontSize: 20, fontWeight: 700, color: '#fff', flexShrink: 0,
   },
   codeBox: {
-    background: '#111318', border: '1px solid #2e3340', borderRadius: 12,
+    background: 'var(--bg)', border: '1.5px solid var(--border)', borderRadius: 16,
     padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
   },
   input: {
-    width: '100%', background: '#111318', border: '1px solid #2e3340',
-    borderRadius: 10, padding: '10px 13px', color: '#e2e6f0',
-    fontSize: 14, outline: 'none', fontFamily: 'inherit',
+    width: '100%', background: 'var(--bg)', border: '1.5px solid var(--border)',
+    borderRadius: 14, padding: '11px 14px', color: 'var(--text)',
+    fontSize: 14, fontWeight: 500, outline: 'none', fontFamily: 'inherit',
   },
   btn: (variant = 'primary') => ({
-    padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+    padding: '11px 16px', borderRadius: 14, fontSize: 13, fontWeight: 700,
     cursor: 'pointer', fontFamily: 'inherit',
-    background: variant === 'primary' ? '#6366f1' : '#242830',
-    border: variant === 'primary' ? 'none' : '1px solid #2e3340',
-    color: variant === 'primary' ? '#fff' : '#9aa0b0',
+    background: variant === 'primary' ? 'var(--accent)' : 'var(--surface2)',
+    border: variant === 'primary' ? 'none' : '1.5px solid var(--border)',
+    color: variant === 'primary' ? '#fff' : 'var(--text2)',
   }),
   friendItem: {
     display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0',
-    borderBottom: '1px solid #2e3340',
+    borderBottom: '1.5px solid var(--border)',
   },
   miniAvatar: {
-    width: 36, height: 36, borderRadius: '50%', background: '#6366f1',
+    width: 36, height: 36, borderRadius: '50%', background: 'var(--accent)',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     fontSize: 13, fontWeight: 700, color: '#fff', flexShrink: 0,
   },
@@ -164,11 +164,11 @@ export default function ProfilePanel({ user, onClose, onOpenSharedGoal, onSignOu
             : <div style={css.avatar}>{initials(profile?.display_name)}</div>
           }
           <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: '#e2e6f0', marginBottom: 3 }}>{profile?.display_name || 'Kullanıcı'}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e6f0', marginBottom: 3 }}>{profile?.display_name || 'Kullanıcı'}</div>
             <div style={{ fontSize: 12, color: '#5c6475', marginBottom: 8 }}>{user.email}</div>
             <button
               onClick={() => { onClose(); onSignOut() }}
-              style={{ padding:'5px 12px', background:'transparent', border:'1px solid #3a4050', borderRadius:8, color:'#f87171', fontSize:12, fontWeight:500, cursor:'pointer', fontFamily:'inherit' }}
+              style={{ padding:'5px 12px', background:'transparent', border:'1.5px solid #3a4050', borderRadius:8, color:'#f87171', fontSize:12, fontWeight:500, cursor:'pointer', fontFamily:'inherit' }}
             >
               ↩ Hesaptan Çık
             </button>
@@ -181,7 +181,7 @@ export default function ProfilePanel({ user, onClose, onOpenSharedGoal, onSignOu
           <div style={css.codeBox}>
             <div>
               <div style={{ fontSize: 11, color: '#5c6475', marginBottom: 4 }}>Bu kodu arkadaşlarınla paylaş</div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: '#6366f1', letterSpacing: 3 }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: '#7c6ff7', letterSpacing: 3 }}>
                 {profile?.user_code || '------'}
               </div>
             </div>
@@ -212,14 +212,14 @@ export default function ProfilePanel({ user, onClose, onOpenSharedGoal, onSignOu
             <div style={{ marginTop: 10, fontSize: 13, color: '#f87171' }}>Kullanıcı bulunamadı</div>
           )}
           {searchResult && searchResult !== 'not_found' && (
-            <div style={{ marginTop: 10, background: '#111318', border: '1px solid #2e3340', borderRadius: 10, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ marginTop: 10, background: '#111318', border: '1.5px solid #2e3340', borderRadius: 10, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
               <div style={css.miniAvatar}>{initials(searchResult.display_name)}</div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 14, fontWeight: 500, color: '#e2e6f0' }}>{searchResult.display_name}</div>
                 <div style={{ fontSize: 11, color: '#5c6475' }}>{searchResult.user_code}</div>
               </div>
               {searchResult.already
-                ? <span style={{ fontSize: 12, color: '#34d399' }}>✓ Arkadaş</span>
+                ? <span style={{ fontSize: 12, color: '#4ade80' }}>✓ Arkadaş</span>
                 : searchResult.alreadySent
                   ? <span style={{ fontSize: 12, color: '#5c6475' }}>İstek gönderildi</span>
                   : <button onClick={() => sendRequest(searchResult.id)} style={css.btn('primary')}>İstek Gönder</button>
