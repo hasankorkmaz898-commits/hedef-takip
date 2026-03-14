@@ -295,7 +295,7 @@ export default function Home() {
 
       {/* Kişisel Hedefler */}
       {mainTab==='personal' && (
-        <div style={{ padding:'12px 16px' }}>
+        <div key="personal" className="anim-main-tab" style={{ padding:'12px 16px' }}>
           {goals.length === 0 ? (
             <div style={{ textAlign:'center', padding:'60px 24px', color:'var(--text3)' }}>
               <div style={{ fontSize:40, marginBottom:12 }}>🎯</div>
@@ -480,7 +480,7 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
   const n = tasks.length||1
 
   return (
-    <div style={{ ...css.card, padding:0, overflow:'hidden', marginBottom:10 }}>
+    <div className="anim-card" style={{ ...css.card, padding:0, overflow:'hidden', marginBottom:10 }}>
 
       {/* Collapsed header */}
       <div onClick={onToggleOpen} style={{ padding:'14px 16px', cursor:'pointer', userSelect:'none' }}>
@@ -511,7 +511,7 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
 
       {/* Expanded */}
       {isOpen && (
-        <div style={{ borderTop:'1px solid var(--border)' }}>
+        <div className="anim-expand" style={{ borderTop:'1px solid var(--border)' }}>
 
           <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:1, background:'var(--border)' }}>
             {[
@@ -559,7 +559,7 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
           <div style={{ padding:'12px 16px 16px' }}>
 
             {tab==='tasks' && (
-              <div>
+              <div className="anim-tab">
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
                   <span style={{ ...css.label }}>Bugünün Görevleri · {todayLogs.length}/{tasks.length}</span>
                   <button onClick={async()=>{ for(const l of todayLogs) await createClient().from('daily_logs').delete().eq('id',l.id) }} style={{ background:'none', border:'none', fontSize:12, color:'var(--text3)', cursor:'pointer' }}>Sıfırla</button>
@@ -604,7 +604,7 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
             )}
 
             {tab==='history' && (
-              <div>
+              <div className="anim-tab">
                 <div style={{ ...css.label, marginBottom:10 }}>Son 14 Gün</div>
                 {histDays.length===0 && <div style={{ textAlign:'center', padding:20, color:'var(--text3)', fontSize:13 }}>Henüz geçmiş gün yok</div>}
                 {histDays.map(({ds,d}) => {
@@ -651,7 +651,7 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
             )}
 
             {tab==='chart' && (
-              <div>
+              <div className="anim-tab">
                 <div style={{ ...css.label, marginBottom:12 }}>Son 14 Gün</div>
                 <div style={{ display:'flex', alignItems:'flex-end', gap:4, height:100, marginBottom:8 }}>
                   {chartDays.map(({ds,isToday,label,good,mid,bad})=>{
