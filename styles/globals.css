@@ -1,38 +1,56 @@
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 :root {
-  --bg: #0a0a0f;
-  --surface: #12121a;
-  --surface2: #1a1a26;
-  --border: #2a2a3e;
-  --accent: #7c6aff;
-  --accent2: #ff6a9e;
-  --text: #e8e8f0;
-  --muted: #6b6b88;
-  --good: #6affd4;
-  --mid: #ffd96a;
-  --bad: #ff6a6a;
-  --fire: #ff9340;
+  --bg:       #0e0f13;
+  --surface:  #16181f;
+  --surface2: #1e2029;
+  --border:   #2a2d38;
+  --border2:  #353848;
+
+  --text:     #f0f1f5;
+  --text2:    #b0b3c1;
+  --text3:    #6b6f80;
+
+  --accent:   #7c6ff7;
+  --accent2:  #a89cf7;
+  --accent-light: rgba(124,111,247,0.13);
+
+  --good:     #4ade80;
+  --good-bg:  rgba(74,222,128,0.1);
+  --mid:      #fbbf24;
+  --mid-bg:   rgba(251,191,36,0.1);
+  --bad:      #f87171;
+  --bad-bg:   rgba(248,113,113,0.1);
+  --fire:     #fb923c;
+  --fire-bg:  rgba(251,146,60,0.1);
+
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 18px;
+  --r-xl: 22px;
 }
 
-* { margin: 0; padding: 0; box-sizing: border-box; }
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+html {
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+  tap-highlight-color: transparent;
+}
 
 body {
-  font-family: 'DM Mono', monospace;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
-  overflow-x: hidden;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  font-weight: 500;
 }
 
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background-image:
-    linear-gradient(rgba(124,106,255,0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(124,106,255,0.04) 1px, transparent 1px);
-  background-size: 40px 40px;
-  pointer-events: none;
-  z-index: 0;
-}
+button { font-family: inherit; cursor: pointer; }
+input, textarea { font-family: inherit; font-weight: 500; }
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 99px; }
