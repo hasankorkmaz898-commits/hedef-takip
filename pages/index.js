@@ -210,11 +210,28 @@ export default function Home() {
 
   /* Goal CRUD */
   async function handleSaveGoal(name, totalDays, taskList) {
-    // taskList: [{name, active_days}]
+    // taskList: [{id?, name, active_days}]
+    // id varsa mevcut task → güncelle (log geçmişi korunur)
+    // id yoksa yeni task → ekle
+    // editGoal'daki task listesinde olup taskList'te olmayanlar → sil
     if (editGoal) {
       await supabase.from('goals').update({ name, total_days:totalDays }).eq('id',editGoal.id)
-      await supabase.from('tasks').delete().eq('goal_id',editGoal.id)
-      await supabase.from('tasks').insert(taskList.map((t,i)=>({ goal_id:editGoal.id, name:t.name, order_index:i, active_days:t.active_days })))
+
+      const existingIds = (tasks[editGoal.id]||[]).map(t=>t.id)
+      const keptIds     = taskList.filter(t=>t.id).map(t=>t.id)
+      const removedIds  = existingIds.filter(id=>!keptIds.includes(id))
+
+      // Kaldırılan task'ları sil
+      if (removedIds.length) await supabase.from('tasks').delete().in('id', removedIds)
+
+      // Mevcut task'ları güncelle (log geçmişi bozulmaz)
+      for (const [i, t] of taskList.entries()) {
+        if (t.id) {
+          await supabase.from('tasks').update({ name:t.name, order_index:i, active_days:t.active_days }).eq('id', t.id)
+        } else {
+          await supabase.from('tasks').insert({ goal_id:editGoal.id, name:t.name, order_index:i, active_days:t.active_days })
+        }
+      }
     } else {
       const { data:g } = await supabase.from('goals').insert({ name, total_days:totalDays, start_date:todayStr(), user_id:user.id }).select().single()
       if (g) await supabase.from('tasks').insert(taskList.map((t,i)=>({ goal_id:g.id, name:t.name, order_index:i, active_days:t.active_days })))
@@ -766,7 +783,7 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
   const [days,     setDays]     = useState(goal?.total_days||'')
   // taskList: [{name, active_days, _key}]
   const initTasks = tasks.length
-    ? tasks.map((t,i) => ({ name:t.name, active_days:t.active_days||[], _key:i }))
+    ? tasks.map((t,i) => ({ id:t.id, name:t.name, active_days:t.active_days||[], _key:i }))
     : [{ name:'', active_days:[], _key:0 }]
   const [taskList, setTaskList] = useState(initTasks)
   const [dayPicker, setDayPicker] = useState(null) // index of open picker
