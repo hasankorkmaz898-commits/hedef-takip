@@ -28,16 +28,31 @@ const addDays    = (ds, n) => { const d = new Date(ds); d.setDate(d.getDate()+n)
 const daysElapsed= s   => Math.max(0, Math.floor((new Date()-new Date(s))/86400000))
 const daysLeft   = (s,t) => Math.max(0, t-daysElapsed(s))
 
+function taskActiveOnDay(task, ds) {
+  if (!task.active_days || task.active_days.length === 0) return true
+  const dow = new Date(ds + 'T00:00:00').getDay()
+  return task.active_days.includes(dow)
+}
+
+function activeTasks(tasks, ds) {
+  return tasks.filter(t => taskActiveOnDay(t, ds))
+}
+
 function dayScore(tasks, logs, ds) {
-  if (!tasks.length) return 0
+  const active = activeTasks(tasks, ds)
+  if (!active.length) return -1
   const dl = logs.filter(l => l.log_date === ds)
-  return tasks.reduce((s,t) => s + (dl.find(l=>l.task_id===t.id) ? Q[dl.find(l=>l.task_id===t.id).quality] : 0), 0) / tasks.length
+  return active.reduce((s,t) => s + (dl.find(l=>l.task_id===t.id) ? Q[dl.find(l=>l.task_id===t.id).quality] : 0), 0) / active.length
 }
 
 function overallScore(tasks, logs, startDate, totalDays) {
   const e = daysElapsed(startDate); if (!e) return 0
   let sum = 0
-  for (let i=0;i<e;i++) sum += dayScore(tasks, logs, addDays(startDate,i))
+  for (let i=0;i<e;i++) {
+    const ds = addDays(startDate,i)
+    const sc = dayScore(tasks, logs, ds)
+    if (sc >= 0) sum += sc
+  }
   return sum / totalDays
 }
 
@@ -48,6 +63,7 @@ function getStreak(tasks, logs, startDate) {
     const ds = toDate(d)
     if (ds < startDate) break
     const sc = dayScore(tasks, logs, ds)
+    if (sc < 0) continue
     if (i===0 && sc===0 && !logs.some(l=>l.log_date===ds)) continue
     if (sc >= 0.5) s++; else break
   }
@@ -193,14 +209,15 @@ export default function Home() {
   function showToast(msg) { setToast(msg); setTimeout(()=>setToast(''),3000) }
 
   /* Goal CRUD */
-  async function handleSaveGoal(name, totalDays, taskNames) {
+  async function handleSaveGoal(name, totalDays, taskList) {
+    // taskList: [{name, active_days}]
     if (editGoal) {
       await supabase.from('goals').update({ name, total_days:totalDays }).eq('id',editGoal.id)
       await supabase.from('tasks').delete().eq('goal_id',editGoal.id)
-      await supabase.from('tasks').insert(taskNames.map((n,i)=>({ goal_id:editGoal.id, name:n, order_index:i })))
+      await supabase.from('tasks').insert(taskList.map((t,i)=>({ goal_id:editGoal.id, name:t.name, order_index:i, active_days:t.active_days })))
     } else {
       const { data:g } = await supabase.from('goals').insert({ name, total_days:totalDays, start_date:todayStr(), user_id:user.id }).select().single()
-      if (g) await supabase.from('tasks').insert(taskNames.map((n,i)=>({ goal_id:g.id, name:n, order_index:i })))
+      if (g) await supabase.from('tasks').insert(taskList.map((t,i)=>({ goal_id:g.id, name:t.name, order_index:i, active_days:t.active_days })))
     }
     setShowModal(false); setEditGoal(null); await loadAll()
   }
@@ -561,23 +578,30 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
             {tab==='tasks' && (
               <div className="anim-tab">
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
-                  <span style={{ ...css.label }}>Bugünün Görevleri · {todayLogs.length}/{tasks.length}</span>
+                  <span style={{ ...css.label }}>Bugünün Görevleri · {todayLogs.length}/{activeTasks(tasks,today).length}</span>
                   <button onClick={async()=>{ for(const l of todayLogs) await createClient().from('daily_logs').delete().eq('id',l.id) }} style={{ background:'none', border:'none', fontSize:12, color:'var(--text3)', cursor:'pointer' }}>Sıfırla</button>
                 </div>
                 <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
                   {tasks.map(t => {
+                    const isActive = taskActiveOnDay(t, today)
                     const log = todayLogs.find(l=>l.task_id===t.id)
                     const q   = log?.quality
                     const qBg = { good:'var(--good-bg)', mid:'var(--mid-bg)', bad:'var(--bad-bg)' }
                     const qBorder = { good:'rgba(74,222,128,0.3)', mid:'rgba(251,191,36,0.3)', bad:'rgba(248,113,113,0.3)' }
+                    const DOW_TR = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
+                    const activeDayLabels = t.active_days?.length ? t.active_days.map(d=>DOW_TR[d]).join(' · ') : null
                     return (
-                      <div key={t.id} style={{ background:q?qBg[q]:'var(--surface2)', border:`1.5px solid ${q?qBorder[q]:'var(--border)'}`, borderRadius:'var(--r-md)', overflow:'hidden' }}>
-                        <div style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', cursor:'pointer' }} onClick={()=>onToggleTask(t.id)}>
-                          <div style={{ width:22, height:22, borderRadius:6, border:`2px solid ${q?`var(--${q})`:'var(--border2)'}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, flexShrink:0, background:q?qBg[q]:'transparent', color:`var(--${q||'text3'})`, fontWeight:700 }}>{q ? QSym[q] : ''}</div>
-                          <div style={{ flex:1, fontSize:14, textDecoration:q?'line-through':'none', color:q?'var(--text3)':'var(--text)' }}>{t.name}</div>
-                          {q && <span style={{ fontSize:11, fontWeight:700, color:`var(--${q})`, background:qBg[q], padding:'2px 8px', borderRadius:99 }}>{QLabel[q]}</span>}
+                      <div key={t.id} style={{ background:!isActive?'transparent':q?qBg[q]:'var(--surface2)', border:`1.5px solid ${!isActive?'var(--border)':q?qBorder[q]:'var(--border)'}`, borderRadius:'var(--r-md)', overflow:'hidden', opacity:isActive?1:0.45 }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', cursor:isActive?'pointer':'default' }} onClick={()=>isActive&&onToggleTask(t.id)}>
+                          <div style={{ width:22, height:22, borderRadius:6, border:`2px solid ${q?`var(--${q})`:isActive?'var(--border2)':'var(--border)'}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, flexShrink:0, background:q?qBg[q]:'transparent', color:`var(--${q||'text3'})`, fontWeight:700 }}>{q ? QSym[q] : ''}</div>
+                          <div style={{ flex:1 }}>
+                            <div style={{ fontSize:14, textDecoration:q?'line-through':'none', color:q?'var(--text3)':isActive?'var(--text)':'var(--text3)' }}>{t.name}</div>
+                            {!isActive && activeDayLabels && <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>{activeDayLabels}</div>}
+                          </div>
+                          {q && isActive && <span style={{ fontSize:11, fontWeight:700, color:`var(--${q})`, background:qBg[q], padding:'2px 8px', borderRadius:99 }}>{QLabel[q]}</span>}
+                          {!isActive && <span style={{ fontSize:10, color:'var(--text3)', background:'var(--surface2)', padding:'2px 8px', borderRadius:99 }}>bugün yok</span>}
                         </div>
-                        {q && (
+                        {q && isActive && (
                           <div style={{ display:'flex', gap:6, padding:'0 14px 12px' }}>
                             {['good','mid','bad'].map(qv => (
                               <button key={qv} onClick={()=>onSetQuality(t.id,qv)} style={{ flex:1, padding:'7px 4px', borderRadius:'var(--r-md)', border:`1.5px solid ${q===qv?`var(--${qv})`:'var(--border)'}`, background:q===qv?qBg[qv]:'transparent', color:q===qv?`var(--${qv})`:'var(--text3)', fontSize:12, fontWeight:700, cursor:'pointer' }}>{QLabel[qv]}</button>
@@ -629,15 +653,19 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                           {tasks.map(t => {
                             const log = dayLogs.find(l=>l.task_id===t.id)
                             const q   = log?.quality||null
+                            const wasActive = taskActiveOnDay(t, ds)
                             return (
-                              <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
-                                <div style={{ flex:1, fontSize:13 }}>{t.name}</div>
-                                <div style={{ display:'flex', gap:4 }}>
+                              <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', borderBottom:'1px solid var(--border)', opacity:wasActive?1:0.4 }}>
+                                <div style={{ flex:1, fontSize:13, color:wasActive?'var(--text)':'var(--text3)' }}>
+                                  {t.name}
+                                  {!wasActive && <span style={{ fontSize:10, color:'var(--text3)', marginLeft:6 }}>· bu gün yok</span>}
+                                </div>
+                                {wasActive && <div style={{ display:'flex', gap:4 }}>
                                   {['good','mid','bad'].map(qv=>(
                                     <button key={qv} onClick={()=>onSetQuality(t.id,qv,ds)} style={{ padding:'4px 10px', borderRadius:'var(--r-md)', border:`1.5px solid ${q===qv?`var(--${qv})`:'var(--border)'}`, background:q===qv?{ good:'var(--good-bg)', mid:'var(--mid-bg)', bad:'var(--bad-bg)' }[qv]:'transparent', color:q===qv?`var(--${qv})`:'var(--text3)', fontSize:11, fontWeight:500, cursor:'pointer' }}>{QLabel[qv]}</button>
                                   ))}
                                   <button onClick={()=>onRemoveLog(t.id,ds)} style={{ padding:'4px 8px', borderRadius:'var(--r-md)', border:'1.5px solid var(--border)', background:'transparent', color:'var(--text3)', fontSize:11, cursor:'pointer' }}>—</button>
-                                </div>
+                                </div>}
                               </div>
                             )
                           })}
@@ -731,15 +759,30 @@ function NoteSection({ goalId, ds, notes, noteInputs, onNoteChange, onSaveNote }
 }
 
 /* ─── Goal Modal ─────────────────────────────────────────────────────────── */
+const DOW_TR  = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
+
 function GoalModal({ goal, tasks, onSave, onClose }) {
-  const [name,      setName]      = useState(goal?.name||'')
-  const [days,      setDays]      = useState(goal?.total_days||'')
-  const [taskNames, setTaskNames] = useState(tasks.length ? tasks.map(t=>t.name) : [''])
+  const [name,     setName]     = useState(goal?.name||'')
+  const [days,     setDays]     = useState(goal?.total_days||'')
+  // taskList: [{name, active_days, _key}]
+  const initTasks = tasks.length
+    ? tasks.map((t,i) => ({ name:t.name, active_days:t.active_days||[], _key:i }))
+    : [{ name:'', active_days:[], _key:0 }]
+  const [taskList, setTaskList] = useState(initTasks)
+  const [dayPicker, setDayPicker] = useState(null) // index of open picker
+
+  function toggleDay(i, dow) {
+    setTaskList(p => p.map((t,j) => {
+      if (j!==i) return t
+      const has = t.active_days.includes(dow)
+      return { ...t, active_days: has ? t.active_days.filter(d=>d!==dow) : [...t.active_days, dow].sort() }
+    }))
+  }
 
   function handleSave() {
-    const filtered = taskNames.filter(t=>t.trim())
+    const filtered = taskList.filter(t=>t.name.trim())
     if (!name.trim()||!days||!filtered.length) { alert('Lütfen tüm alanları doldur.'); return }
-    onSave(name.trim(), parseInt(days), filtered)
+    onSave(name.trim(), parseInt(days), filtered.map(t=>({ name:t.name.trim(), active_days:t.active_days })))
   }
 
   return (
@@ -761,16 +804,69 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
         </div>
 
         <div style={{ marginBottom:20 }}>
-          <div style={{ ...css.label, marginBottom:6 }}>Günlük Görevler</div>
-          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            {taskNames.map((t,i)=>(
-              <div key={i} style={{ display:'flex', gap:8, alignItems:'center' }}>
-                <input value={t} onChange={e=>setTaskNames(p=>p.map((x,j)=>j===i?e.target.value:x))} placeholder={`Görev ${i+1}`} style={{ ...css.input }} />
-                <button onClick={()=>{ if(taskNames.length>1) setTaskNames(p=>p.filter((_,j)=>j!==i)) }} style={{ ...css.iconBtn, flexShrink:0 }}>✕</button>
+          <div style={{ ...css.label, marginBottom:6 }}>Görevler</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            {taskList.map((t,i)=>(
+              <div key={t._key}>
+                {/* Görev satırı */}
+                <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:6 }}>
+                  <input
+                    defaultValue={t.name}
+                    onBlur={e=>setTaskList(p=>p.map((x,j)=>j===i?{...x,name:e.target.value}:x))}
+                    placeholder={`Görev ${i+1}`}
+                    style={{ ...css.input, flex:1 }}
+                  />
+                  {/* Takvim ikonu */}
+                  <button
+                    onClick={()=>setDayPicker(dayPicker===i?null:i)}
+                    title="Hangi günler?"
+                    style={{ ...css.iconBtn, flexShrink:0, width:36, height:36, fontSize:16,
+                      background: t.active_days.length ? 'rgba(124,111,247,0.15)' : 'var(--surface2)',
+                      border: `1.5px solid ${t.active_days.length ? 'rgba(124,111,247,0.4)' : 'var(--border)'}`,
+                      color: t.active_days.length ? 'var(--accent)' : 'var(--text3)',
+                      borderRadius: 'var(--r-md)'
+                    }}
+                  >📅</button>
+                  <button onClick={()=>{ if(taskList.length>1) setTaskList(p=>p.filter((_,j)=>j!==i)) }} style={{ ...css.iconBtn, flexShrink:0 }}>✕</button>
+                </div>
+
+                {/* Gün seçici */}
+                {dayPicker===i && (
+                  <div style={{ background:'var(--surface2)', border:'1.5px solid var(--border)', borderRadius:'var(--r-md)', padding:'10px 12px', marginBottom:4 }}>
+                    <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.07em', color:'var(--text3)', marginBottom:8 }}>
+                      Hangi günler aktif? {t.active_days.length===0 && <span style={{ color:'var(--accent)', fontWeight:500, textTransform:'none', letterSpacing:'normal', fontSize:11 }}>· her gün (varsayılan)</span>}
+                    </div>
+                    <div style={{ display:'flex', gap:6 }}>
+                      {DOW_TR.map((label,dow)=>{
+                        const on = t.active_days.includes(dow)
+                        return (
+                          <button key={dow} onClick={()=>toggleDay(i,dow)} style={{
+                            flex:1, padding:'7px 2px', borderRadius:10, fontSize:11, fontWeight:700, cursor:'pointer',
+                            background: on ? 'var(--accent)' : 'var(--surface)',
+                            border: `1.5px solid ${on ? 'var(--accent)' : 'var(--border)'}`,
+                            color: on ? '#fff' : 'var(--text3)',
+                          }}>{label}</button>
+                        )
+                      })}
+                    </div>
+                    {t.active_days.length > 0 && (
+                      <button onClick={()=>setTaskList(p=>p.map((x,j)=>j===i?{...x,active_days:[]}:x))} style={{ marginTop:8, background:'none', border:'none', color:'var(--text3)', fontSize:11, cursor:'pointer' }}>
+                        × Tümünü temizle (her gün aktif)
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Seçili günler özeti */}
+                {t.active_days.length > 0 && dayPicker!==i && (
+                  <div style={{ fontSize:11, color:'var(--accent2)', paddingLeft:4 }}>
+                    📅 {t.active_days.map(d=>DOW_TR[d]).join(', ')}
+                  </div>
+                )}
               </div>
             ))}
           </div>
-          <button onClick={()=>setTaskNames(p=>[...p,''])} style={{ marginTop:10, background:'none', border:'none', color:'var(--accent)', fontSize:13, fontWeight:500, cursor:'pointer' }}>+ Görev Ekle</button>
+          <button onClick={()=>setTaskList(p=>[...p,{name:'',active_days:[],_key:Date.now()}])} style={{ marginTop:10, background:'none', border:'none', color:'var(--accent)', fontSize:13, fontWeight:500, cursor:'pointer' }}>+ Görev Ekle</button>
         </div>
 
         <div style={{ display:'flex', gap:10 }}>
