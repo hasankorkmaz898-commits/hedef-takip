@@ -832,6 +832,72 @@ function NoteSection({ goalId, ds, notes, noteInputs, onNoteChange, onSaveNote }
 }
 
 
+/* ─── Risk Metre ─────────────────────────────────────────────────────────── */
+function RiskMeter({ score }) {
+  // score: 0-100, 0=en iyi (yeşil), 100=en kötü (kırmızı)
+  // Yarım daire gösterge — SVG tabanlı
+  const r = 54
+  const cx = 70, cy = 68
+  const startAngle = -180
+  const totalArc = 180
+  const needleAngle = startAngle + (score / 100) * totalArc
+
+  // SVG arc yardımcısı
+  function polarToXY(angle, radius) {
+    const rad = (angle * Math.PI) / 180
+    return { x: cx + radius * Math.cos(rad), y: cy + radius * Math.sin(rad) }
+  }
+  function arcPath(startA, endA, r) {
+    const s = polarToXY(startA, r)
+    const e = polarToXY(endA, r)
+    const large = Math.abs(endA - startA) > 180 ? 1 : 0
+    return `M ${s.x} ${s.y} A ${r} ${r} 0 ${large} 1 ${e.x} ${e.y}`
+  }
+
+  const zones = [
+    { from:-180, to:-108, color:'#4ade80', label:'Mükemmel' },
+    { from:-108, to:-36,  color:'#7c6ff7', label:'İyi'      },
+    { from:-36,  to:36,   color:'#fbbf24', label:'Orta'     },
+    { from:36,   to:108,  color:'#fb923c', label:'Zayıf'    },
+    { from:108,  to:180,  color:'#f87171', label:'Riskli'   },
+  ]
+
+  const needle = polarToXY(needleAngle, r - 8)
+  const riskLabel = score<=20?'Mükemmel':score<=40?'İyi':score<=60?'Orta':score<=80?'Zayıf':'Riskli'
+  const riskColor = score<=20?'#4ade80':score<=40?'#7c6ff7':score<=60?'#fbbf24':score<=80?'#fb923c':'#f87171'
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'center' }}>
+      <svg width={140} height={80} viewBox="0 0 140 80">
+        {/* Arka zemin yayı */}
+        <path d={arcPath(-180,0,r)} fill="none" stroke="var(--surface2)" strokeWidth={14} strokeLinecap="round"/>
+        {/* Renkli zone yayları */}
+        {zones.map((z,i)=>(
+          <path key={i} d={arcPath(z.from,z.to,r)} fill="none" stroke={z.color} strokeWidth={10} strokeLinecap="butt" opacity={0.85}/>
+        ))}
+        {/* İbre */}
+        <line
+          x1={cx} y1={cy}
+          x2={needle.x} y2={needle.y}
+          stroke="var(--text)" strokeWidth={2.5} strokeLinecap="round"
+        />
+        <circle cx={cx} cy={cy} r={4} fill="var(--text)"/>
+        {/* Merkez etiket */}
+        <text x={cx} y={cy+18} textAnchor="middle" fontSize={11} fontWeight="700" fill={riskColor}>{riskLabel}</text>
+      </svg>
+      {/* Zone etiketleri */}
+      <div style={{ display:'flex', gap:5, flexWrap:'wrap', justifyContent:'center', marginTop:2 }}>
+        {zones.map((z,i)=>(
+          <div key={i} style={{ display:'flex', alignItems:'center', gap:3, fontSize:9, color:'var(--text3)', fontWeight:600 }}>
+            <div style={{ width:7, height:7, borderRadius:2, background:z.color }}/>
+            {z.label}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /* ─── Analytics Panel ────────────────────────────────────────────────────── */
 function AnalyticsPanel({ goals, tasks, logs }) {
   const DOW_TR = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
@@ -845,14 +911,14 @@ function AnalyticsPanel({ goals, tasks, logs }) {
     </div>
   )
 
-  // ── Tüm hedefler için analiz hesapla ──
   const goalAnalytics = goals.map(goal => {
-    const gt   = tasks[goal.id]||[]
-    const gl   = logs[goal.id]||[]
-    const e    = daysElapsed(goal.start_date)
-    const op   = Math.round(overallScore(gt,gl,goal.start_date,goal.total_days)*100)
+    const gt = tasks[goal.id]||[]
+    const gl = logs[goal.id]||[]
+    const e  = daysElapsed(goal.start_date)
+    const remaining = daysLeft(goal.start_date, goal.total_days)
+    const op = Math.round(overallScore(gt,gl,goal.start_date,goal.total_days)*100)
 
-    // Günlük skorlar dizisi (sadece aktif günler)
+    // Günlük skorlar (sadece aktif günler)
     const daySc = []
     for (let i=0;i<e;i++) {
       const ds = addDays(goal.start_date,i)
@@ -860,25 +926,32 @@ function AnalyticsPanel({ goals, tasks, logs }) {
       if (sc >= 0) daySc.push({ ds, sc, dow: new Date(ds+'T00:00:00').getDay() })
     }
 
-    // Momentum: son 7 gün vs önceki 7 gün
-    const last7  = daySc.slice(-7).reduce((s,x)=>s+x.sc,0) / Math.max(1,Math.min(7,daySc.length))
-    const prev7  = daySc.slice(-14,-7).reduce((s,x)=>s+x.sc,0) / Math.max(1,Math.min(7,daySc.slice(-14,-7).length))
-    const momentum = daySc.length < 3 ? null : Math.round((last7 - prev7)*100)
+    // ── Momentum: son 3 gün trendi (ağırlıklı) ──
+    const last3  = daySc.slice(-3)
+    const last7  = daySc.slice(-7)
+    const prev7  = daySc.slice(-14,-7)
+    const l3avg  = last3.length  ? last3.reduce((s,x)=>s+x.sc,0)/last3.length   : null
+    const l7avg  = last7.length  ? last7.reduce((s,x)=>s+x.sc,0)/last7.length   : 0
+    const p7avg  = prev7.length  ? prev7.reduce((s,x)=>s+x.sc,0)/prev7.length   : null
+    const momentum = daySc.length < 3 ? null : Math.round((l7avg - (p7avg??l7avg))*100)
+    // Son 3 günün yönü: pozitif mi negatif mi
+    const recentTrend = last3.length >= 2
+      ? (last3[last3.length-1].sc - last3[0].sc) * 100
+      : null
 
-    // Tutarlılık: aktif günlerde en az %30 alan günlerin oranı
+    // ── Tutarlılık ──
     const consistency = daySc.length ? Math.round(daySc.filter(x=>x.sc>=0.3).length/daySc.length*100) : 0
 
-    // Haftalık örüntü — gün bazlı ortalama
+    // ── Haftalık örüntü ──
     const dowMap = Array(7).fill(null).map(()=>({sum:0,cnt:0}))
     daySc.forEach(({sc,dow})=>{ dowMap[dow].sum+=sc; dowMap[dow].cnt++ })
     const dowAvg = dowMap.map(d=>d.cnt?Math.round(d.sum/d.cnt*100):null)
     const bestDow  = dowAvg.reduce((bi,v,i)=>v!==null&&(dowAvg[bi]===null||v>dowAvg[bi])?i:bi, 0)
     const worstDow = dowAvg.reduce((wi,v,i)=>v!==null&&(dowAvg[wi]===null||v<dowAvg[wi])?i:wi, 0)
 
-    // Görev bazlı başarı oranı
+    // ── Görev başarı oranları ──
     const taskStats = gt.map(t=>{
       const tLogs = gl.filter(l=>l.task_id===t.id)
-      // Kaç aktif günde log var vs kaç aktif gün geçti
       let activeCnt=0, doneCnt=0
       for (let i=0;i<e;i++) {
         const ds=addDays(goal.start_date,i)
@@ -891,36 +964,95 @@ function AnalyticsPanel({ goals, tasks, logs }) {
       return { ...t, rate, qAvg, activeCnt, doneCnt }
     }).sort((a,b)=>b.rate-a.rate)
 
-    // Kalite trendi: ilk yarı vs ikinci yarı
+    // ── Kalite trendi ──
     const half = Math.floor(daySc.length/2)
-    const firstHalf = daySc.slice(0,half)
-    const secHalf   = daySc.slice(half)
-    const fhAvg = firstHalf.length ? Math.round(firstHalf.reduce((s,x)=>s+x.sc,0)/firstHalf.length*100) : null
-    const shAvg = secHalf.length   ? Math.round(secHalf.reduce((s,x)=>s+x.sc,0)/secHalf.length*100)    : null
+    const fhAvg = half>0 ? Math.round(daySc.slice(0,half).reduce((s,x)=>s+x.sc,0)/half*100) : null
+    const shAvg = daySc.slice(half).length>0 ? Math.round(daySc.slice(half).reduce((s,x)=>s+x.sc,0)/daySc.slice(half).length*100) : null
 
-    // Tahminsel uyarı
     const streak = getStreak(gt,gl,goal.start_date)
     const todaySc = dayScore(gt,gl,today)
+
+    // ── Kurtarılabilirlik: bu tempoda hedefe ulaşılabilir mi? ──
+    // Gerekli günlük oran = kalan hedef / kalan gün
+    const neededPerDay = remaining > 0
+      ? Math.max(0, (goal.total_days - (op/100*goal.total_days)) / remaining)
+      : null
+    const currentPerDay = l7avg ?? (daySc.length ? daySc.reduce((s,x)=>s+x.sc,0)/daySc.length : 0)
+    const recoverable = neededPerDay !== null
+      ? neededPerDay <= 1.0 && currentPerDay >= neededPerDay * 0.7
+      : true
+
+    // ── GELİŞMİŞ RISK SKORU (0=güvenli, 100=çok riskli) ──
+    // 1. Veri güveni: az gün geçmişse belirsizlik yüksek
+    const dataConfidence = Math.min(1, e / 7) // 7 gün sonra tam güven
+
+    // 2. İlerleme riski: kalan süreye göre ne kadar geride?
+    const expectedProgress = e / goal.total_days * 100
+    const progressGap = Math.max(0, expectedProgress - op)       // % geride
+    const progressRisk = Math.min(100, progressGap * 2)          // 50 puan geride = max risk
+
+    // 3. Tutarlılık riski
+    const consistencyRisk = Math.max(0, 100 - consistency)
+
+    // 4. Momentum riski: son 3 gün düşüyor mu?
+    const momentumRisk = recentTrend !== null
+      ? Math.min(100, Math.max(0, -recentTrend * 2))             // düşüş → risk artar
+      : 30                                                         // veri yok → orta risk
+
+    // 5. Süre baskısı: son %30'luk dilimde mi?
+    const timePressure = e / goal.total_days > 0.7
+      ? Math.min(100, progressGap * 3)
+      : 0
+
+    // 6. Seri kırılma riski: bugün aktif görev var ama henüz sıfır
+    const streakRisk = (streak >= 3 && todaySc === 0 && activeTasks(gt,today).length > 0) ? 40 : 0
+
+    // Ağırlıklı toplam (veri güvenine göre scale)
+    const rawRisk = (
+      progressRisk   * 0.30 +
+      consistencyRisk* 0.25 +
+      momentumRisk   * 0.20 +
+      timePressure   * 0.15 +
+      streakRisk     * 0.10
+    )
+    // Veri az → riski ortaya çek (belirsiz)
+    const riskScore = Math.round(rawRisk * dataConfidence + 50 * (1 - dataConfidence))
+
+    // Sağlık = risk'in tersi (gösterge tutarlılığı için)
+    const healthScore = Math.max(0, 100 - riskScore)
+    const healthLabel = riskScore<=20?'Mükemmel':riskScore<=40?'İyi':riskScore<=60?'Orta':riskScore<=80?'Zayıf':'Riskli'
+    const healthColor = riskScore<=20?'var(--good)':riskScore<=40?'var(--accent)':riskScore<=60?'var(--mid)':riskScore<=80?'var(--fire)':'var(--bad)'
+
+    // ── Akıllı uyarılar ──
     const warnings = []
-    if (streak>=3 && todaySc===0 && activeTasks(gt,today).length>0) warnings.push({ type:'danger', text:`🔥 ${streak} günlük serin tehlikede — bugün henüz görev işaretlemedin` })
-    if (momentum!==null && momentum<=-20) warnings.push({ type:'warn', text:`📉 Son 7 günde performans ${Math.abs(momentum)} puan düştü` })
-    if (consistency<50 && e>7) warnings.push({ type:'warn', text:`⚠️ Tutarlılık düşük — aktif günlerin %${consistency}'inde hedeflere ulaştın` })
-    if (op>=90) warnings.push({ type:'good', text:`🏆 Mükemmel gidiyorsun — genel başarı %${op}` })
-    if (momentum!==null && momentum>=15) warnings.push({ type:'good', text:`📈 Momentum yükseliyor — son 7 günde ${momentum} puan artış` })
+    if (streak>=3 && todaySc===0 && activeTasks(gt,today).length>0)
+      warnings.push({ type:'danger', text:`🔥 ${streak} günlük serin tehlikede — bugün henüz görev işaretlemedin` })
+    if (riskScore>70 && remaining>0)
+      warnings.push({ type:'danger', text:`⚠️ Yüksek risk — mevcut tempoda hedefe ulaşmak zorlaşıyor` })
+    if (momentum!==null && momentum<=-20)
+      warnings.push({ type:'warn', text:`📉 Son 7 günde performans ${Math.abs(momentum)} puan düştü` })
+    if (recentTrend!==null && recentTrend<=-20)
+      warnings.push({ type:'warn', text:`📉 Son 3 gün düşüş trendinde — ivmeyi artır` })
+    if (consistency<50 && e>7)
+      warnings.push({ type:'warn', text:`⚠️ Tutarlılık düşük — aktif günlerin %${consistency}'inde hedefe ulaştın` })
+    if (!recoverable && remaining>0 && e>5)
+      warnings.push({ type:'danger', text:`🚨 Mevcut tempoda ${remaining} günde hedefe ulaşmak çok zor` })
+    if (timePressure>50)
+      warnings.push({ type:'warn', text:`⏰ Süre baskısı — son dilimdesin, günlük tempo artmalı` })
+    if (riskScore<=20)
+      warnings.push({ type:'good', text:`🏆 Mükemmel gidiyorsun — risk çok düşük` })
+    if (momentum!==null && momentum>=15)
+      warnings.push({ type:'good', text:`📈 Momentum yükseliyor — harika ivme` })
+    if (recentTrend!==null && recentTrend>=20)
+      warnings.push({ type:'good', text:`🚀 Son 3 günde sürekli yükseliş!` })
 
-    // Hedef sağlık skoru (0-100)
-    const healthScore = Math.round(op*0.4 + consistency*0.35 + Math.min(100,streak*10)*0.25)
-    const healthLabel = healthScore>=75?'Mükemmel':healthScore>=55?'İyi':healthScore>=35?'Orta':'Riskli'
-    const healthColor = healthScore>=75?'var(--good)':healthScore>=55?'var(--accent)':healthScore>=35?'var(--mid)':'var(--bad)'
-
-    return { goal, op, momentum, consistency, dowAvg, bestDow, worstDow, taskStats, fhAvg, shAvg, warnings, healthScore, healthLabel, healthColor, daySc, e }
+    return { goal, op, riskScore, healthScore, healthLabel, healthColor, momentum, recentTrend, consistency, dowAvg, bestDow, worstDow, taskStats, fhAvg, shAvg, warnings, daySc, e, remaining, recoverable, neededPerDay, currentPerDay }
   })
 
-  // ── Genel özet (tüm hedefler) ──
   const totalActive = goals.length
-  const avgHealth   = Math.round(goalAnalytics.reduce((s,g)=>s+g.healthScore,0)/totalActive)
+  const avgRisk     = Math.round(goalAnalytics.reduce((s,g)=>s+g.riskScore,0)/totalActive)
   const totalStreak = Math.max(...goals.map(g=>getStreak(tasks[g.id]||[],logs[g.id]||[],g.start_date)))
-  const allWarnings = goalAnalytics.flatMap(g=>g.warnings).slice(0,4)
+  const allWarnings = goalAnalytics.flatMap(g=>g.warnings).filter((w,i,a)=>a.findIndex(x=>x.text===w.text)===i).slice(0,5)
 
   return (
     <div>
@@ -928,13 +1060,13 @@ function AnalyticsPanel({ goals, tasks, logs }) {
       {/* Genel özet kartlar */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginBottom:16 }}>
         {[
-          { label:'Ortalama Sağlık', val:`${avgHealth}`, unit:'%', color:avgHealth>=65?'var(--good)':avgHealth>=40?'var(--mid)':'var(--bad)' },
-          { label:'Aktif Hedef',     val:totalActive,    unit:'', color:'var(--accent)' },
-          { label:'En Uzun Seri',    val:totalStreak,    unit:'🔥', color:'var(--fire)' },
+          { label:'Ort. Risk', val:avgRisk<=20?'Düşük':avgRisk<=40?'İyi':avgRisk<=60?'Orta':avgRisk<=80?'Zayıf':'Yüksek', color:avgRisk<=20?'var(--good)':avgRisk<=40?'var(--accent)':avgRisk<=60?'var(--mid)':avgRisk<=80?'var(--fire)':'var(--bad)' },
+          { label:'Aktif Hedef', val:totalActive+'', color:'var(--accent)' },
+          { label:'En Uzun Seri', val:totalStreak+'🔥', color:'var(--fire)' },
         ].map((s,i)=>(
           <div key={i} style={{ background:'var(--surface2)', borderRadius:16, padding:'13px 10px', textAlign:'center' }}>
             <div style={{ fontSize:9, fontWeight:700, textTransform:'uppercase', letterSpacing:'.07em', color:'var(--text3)', marginBottom:4 }}>{s.label}</div>
-            <div style={{ fontSize:22, fontWeight:800, color:s.color }}>{s.val}<span style={{ fontSize:14 }}>{s.unit}</span></div>
+            <div style={{ fontSize:i===0?15:22, fontWeight:800, color:s.color }}>{s.val}</div>
           </div>
         ))}
       </div>
@@ -942,7 +1074,7 @@ function AnalyticsPanel({ goals, tasks, logs }) {
       {/* Uyarılar / içgörüler */}
       {allWarnings.length>0 && (
         <div style={{ marginBottom:16 }}>
-          <div style={{ ...css.label, marginBottom:8 }}>Bugünün İçgörüleri</div>
+          <div style={{ ...css.label, marginBottom:8 }}>Akıllı İçgörüler</div>
           <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
             {allWarnings.map((w,i)=>(
               <div key={i} style={{ background:w.type==='danger'?'rgba(248,113,113,0.08)':w.type==='good'?'rgba(74,222,128,0.08)':'rgba(251,191,36,0.08)', border:`1.5px solid ${w.type==='danger'?'rgba(248,113,113,0.25)':w.type==='good'?'rgba(74,222,128,0.25)':'rgba(251,191,36,0.25)'}`, borderRadius:14, padding:'10px 13px', fontSize:13, color:w.type==='danger'?'var(--bad)':w.type==='good'?'var(--good)':'var(--mid)', fontWeight:500 }}>
@@ -954,26 +1086,53 @@ function AnalyticsPanel({ goals, tasks, logs }) {
       )}
 
       {/* Her hedef için detaylı analiz */}
-      {goalAnalytics.map(({ goal, op, momentum, consistency, dowAvg, bestDow, worstDow, taskStats, fhAvg, shAvg, healthScore, healthLabel, healthColor, daySc, e }) => (
-        <div key={goal.id} style={{ background:'var(--surface)', border:'1.5px solid var(--border)', borderRadius:20, marginBottom:14, overflow:'hidden' }}>
+      {goalAnalytics.map(({ goal, op, riskScore, healthScore, healthLabel, healthColor, momentum, recentTrend, consistency, dowAvg, bestDow, worstDow, taskStats, fhAvg, shAvg, daySc, e, remaining, recoverable, neededPerDay, currentPerDay }) => (
+        <div key={goal.id} style={{ background:'var(--surface)', border:`1.5px solid ${riskScore>70?'rgba(248,113,113,0.3)':riskScore>40?'rgba(251,191,36,0.2)':'var(--border)'}`, borderRadius:20, marginBottom:14, overflow:'hidden' }}>
 
-          {/* Başlık + sağlık skoru */}
+          {/* Başlık + Risk Metre */}
           <div style={{ padding:'14px 16px 12px', borderBottom:'1.5px solid var(--border)' }}>
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
-              <div style={{ fontSize:14, fontWeight:700, color:'var(--text)', flex:1, marginRight:8 }}>{goal.name}</div>
-              <div style={{ textAlign:'center', flexShrink:0 }}>
-                <div style={{ fontSize:20, fontWeight:800, color:healthColor }}>{healthScore}</div>
-                <div style={{ fontSize:9, fontWeight:700, color:healthColor, textTransform:'uppercase', letterSpacing:'.06em' }}>{healthLabel}</div>
+            <div style={{ fontSize:14, fontWeight:700, color:'var(--text)', marginBottom:12 }}>{goal.name}</div>
+
+            {/* Risk metre + metrikler yan yana */}
+            <div style={{ display:'flex', alignItems:'flex-start', gap:12 }}>
+              <div style={{ flexShrink:0 }}>
+                <RiskMeter score={riskScore} />
               </div>
-            </div>
-            {/* Sağlık barı */}
-            <div style={{ height:5, background:'var(--surface2)', borderRadius:99, overflow:'hidden' }}>
-              <div style={{ height:'100%', width:`${healthScore}%`, background:healthColor, borderRadius:99 }} />
-            </div>
-            <div style={{ display:'flex', gap:16, fontSize:11, color:'var(--text3)', marginTop:6, fontWeight:500 }}>
-              <span>İlerleme <b style={{ color:'var(--text)' }}>{op}%</b></span>
-              <span>Tutarlılık <b style={{ color:consistency>=70?'var(--good)':consistency>=40?'var(--mid)':'var(--bad)' }}>{consistency}%</b></span>
-              {momentum!==null && <span>Momentum <b style={{ color:momentum>=0?'var(--good)':'var(--bad)' }}>{momentum>=0?'+':''}{momentum}p</b></span>}
+              <div style={{ flex:1, display:'flex', flexDirection:'column', gap:8, paddingTop:6 }}>
+                {/* İlerleme */}
+                <div>
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'var(--text3)', marginBottom:3 }}>
+                    <span>İlerleme</span><b style={{ color:'var(--text)' }}>{op}%</b>
+                  </div>
+                  <div style={{ height:5, background:'var(--surface2)', borderRadius:99, overflow:'hidden' }}>
+                    <div style={{ height:'100%', width:`${op}%`, background:op>=70?'var(--good)':op>=40?'var(--accent)':'var(--bad)', borderRadius:99 }}/>
+                  </div>
+                </div>
+                {/* Tutarlılık */}
+                <div>
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'var(--text3)', marginBottom:3 }}>
+                    <span>Tutarlılık</span><b style={{ color:consistency>=70?'var(--good)':consistency>=40?'var(--mid)':'var(--bad)' }}>{consistency}%</b>
+                  </div>
+                  <div style={{ height:5, background:'var(--surface2)', borderRadius:99, overflow:'hidden' }}>
+                    <div style={{ height:'100%', width:`${consistency}%`, background:consistency>=70?'var(--good)':consistency>=40?'var(--mid)':'var(--bad)', borderRadius:99 }}/>
+                  </div>
+                </div>
+                {/* Momentum */}
+                {momentum!==null && (
+                  <div style={{ display:'flex', gap:8, fontSize:11, color:'var(--text3)' }}>
+                    <span>7 günlük trend <b style={{ color:momentum>=0?'var(--good)':'var(--bad)' }}>{momentum>=0?'+':''}{momentum}p</b></span>
+                    {recentTrend!==null && <span>Son 3 gün <b style={{ color:recentTrend>=0?'var(--good)':'var(--bad)' }}>{recentTrend>=0?'↑':'↓'}</b></span>}
+                  </div>
+                )}
+                {/* Kurtarılabilirlik */}
+                {neededPerDay!==null && remaining>0 && (
+                  <div style={{ background: recoverable?'rgba(74,222,128,0.08)':'rgba(248,113,113,0.08)', border:`1px solid ${recoverable?'rgba(74,222,128,0.2)':'rgba(248,113,113,0.2)'}`, borderRadius:10, padding:'6px 10px', fontSize:11, color: recoverable?'var(--good)':'var(--bad)', fontWeight:500 }}>
+                    {recoverable
+                      ? `✓ ${remaining} günde hedefe ulaşmak mümkün`
+                      : `✗ Mevcut tempoda ${remaining} günde yetişmek zor`}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
