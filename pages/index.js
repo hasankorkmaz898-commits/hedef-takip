@@ -319,7 +319,7 @@ export default function Home() {
       {/* Ana Sekmeler */}
       <div style={{ padding:'12px 16px 0' }}>
         <div style={{ display:'flex', background:'var(--surface2)', borderRadius:16, padding:4, gap:3 }}>
-          {[['personal','🎯','Hedeflerim'],['shared','🤝','Ortak']].map(([t,icon,label])=>(
+          {[['personal','🎯','Hedeflerim'],['shared','🤝','Ortak'],['analytics','📊','Analiz']].map(([t,icon,label])=>(
             <button key={t} onClick={()=>setMainTab(t)} style={{ flex:1, padding:'10px 8px', background:mainTab===t?'var(--surface)':`transparent`, border:mainTab===t?'1.5px solid var(--border)':`1.5px solid transparent`, borderRadius:13, color:mainTab===t?'var(--text)':`var(--text3)`, fontSize:13, fontWeight:mainTab===t?700:500, cursor:'pointer', fontFamily:'inherit', display:'flex', alignItems:'center', justifyContent:'center', gap:6, transition:'all 0.15s' }}>
               {icon} {label}
             </button>
@@ -372,6 +372,13 @@ export default function Home() {
             inline={true}
             onClose={() => { setSharedFriend(null) }}
           />
+        </div>
+      )}
+
+      {/* Analiz Sekmesi */}
+      {mainTab==='analytics' && (
+        <div key="analytics" className="anim-main-tab" style={{ padding:'12px 16px' }}>
+          <AnalyticsPanel goals={goals} tasks={tasks} logs={logs} />
         </div>
       )}
 
@@ -771,6 +778,240 @@ function NoteSection({ goalId, ds, notes, noteInputs, onNoteChange, onSaveNote }
       <button onClick={()=>onSaveNote(ds)} style={{ marginTop:6, padding:'7px 14px', background:'var(--surface2)', border:'1.5px solid var(--border)', borderRadius:'var(--r-md)', color:'var(--text2)', fontSize:12, fontWeight:500, cursor:'pointer' }}>
         Kaydet
       </button>
+    </div>
+  )
+}
+
+
+/* ─── Analytics Panel ────────────────────────────────────────────────────── */
+function AnalyticsPanel({ goals, tasks, logs }) {
+  const DOW_TR = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
+  const today  = todayStr()
+
+  if (!goals.length) return (
+    <div style={{ textAlign:'center', padding:'60px 24px', color:'var(--text3)' }}>
+      <div style={{ fontSize:40, marginBottom:12 }}>📊</div>
+      <div style={{ fontSize:15, fontWeight:700, color:'var(--text2)', marginBottom:6 }}>Henüz veri yok</div>
+      <div style={{ fontSize:13 }}>Hedef oluşturup görev işaretlemeye başla</div>
+    </div>
+  )
+
+  // ── Tüm hedefler için analiz hesapla ──
+  const goalAnalytics = goals.map(goal => {
+    const gt   = tasks[goal.id]||[]
+    const gl   = logs[goal.id]||[]
+    const e    = daysElapsed(goal.start_date)
+    const op   = Math.round(overallScore(gt,gl,goal.start_date,goal.total_days)*100)
+
+    // Günlük skorlar dizisi (sadece aktif günler)
+    const daySc = []
+    for (let i=0;i<e;i++) {
+      const ds = addDays(goal.start_date,i)
+      const sc = dayScore(gt,gl,ds)
+      if (sc >= 0) daySc.push({ ds, sc, dow: new Date(ds+'T00:00:00').getDay() })
+    }
+
+    // Momentum: son 7 gün vs önceki 7 gün
+    const last7  = daySc.slice(-7).reduce((s,x)=>s+x.sc,0) / Math.max(1,Math.min(7,daySc.length))
+    const prev7  = daySc.slice(-14,-7).reduce((s,x)=>s+x.sc,0) / Math.max(1,Math.min(7,daySc.slice(-14,-7).length))
+    const momentum = daySc.length < 3 ? null : Math.round((last7 - prev7)*100)
+
+    // Tutarlılık: aktif günlerde en az %30 alan günlerin oranı
+    const consistency = daySc.length ? Math.round(daySc.filter(x=>x.sc>=0.3).length/daySc.length*100) : 0
+
+    // Haftalık örüntü — gün bazlı ortalama
+    const dowMap = Array(7).fill(null).map(()=>({sum:0,cnt:0}))
+    daySc.forEach(({sc,dow})=>{ dowMap[dow].sum+=sc; dowMap[dow].cnt++ })
+    const dowAvg = dowMap.map(d=>d.cnt?Math.round(d.sum/d.cnt*100):null)
+    const bestDow  = dowAvg.reduce((bi,v,i)=>v!==null&&(dowAvg[bi]===null||v>dowAvg[bi])?i:bi, 0)
+    const worstDow = dowAvg.reduce((wi,v,i)=>v!==null&&(dowAvg[wi]===null||v<dowAvg[wi])?i:wi, 0)
+
+    // Görev bazlı başarı oranı
+    const taskStats = gt.map(t=>{
+      const tLogs = gl.filter(l=>l.task_id===t.id)
+      // Kaç aktif günde log var vs kaç aktif gün geçti
+      let activeCnt=0, doneCnt=0
+      for (let i=0;i<e;i++) {
+        const ds=addDays(goal.start_date,i)
+        if (!taskActiveOnDay(t,ds)) continue
+        activeCnt++
+        if (tLogs.find(l=>l.log_date===ds)) doneCnt++
+      }
+      const rate = activeCnt ? Math.round(doneCnt/activeCnt*100) : 0
+      const qAvg = tLogs.length ? Math.round(tLogs.reduce((s,l)=>s+(l.quality==='good'?100:l.quality==='mid'?60:30),0)/tLogs.length) : 0
+      return { ...t, rate, qAvg, activeCnt, doneCnt }
+    }).sort((a,b)=>b.rate-a.rate)
+
+    // Kalite trendi: ilk yarı vs ikinci yarı
+    const half = Math.floor(daySc.length/2)
+    const firstHalf = daySc.slice(0,half)
+    const secHalf   = daySc.slice(half)
+    const fhAvg = firstHalf.length ? Math.round(firstHalf.reduce((s,x)=>s+x.sc,0)/firstHalf.length*100) : null
+    const shAvg = secHalf.length   ? Math.round(secHalf.reduce((s,x)=>s+x.sc,0)/secHalf.length*100)    : null
+
+    // Tahminsel uyarı
+    const streak = getStreak(gt,gl,goal.start_date)
+    const todaySc = dayScore(gt,gl,today)
+    const warnings = []
+    if (streak>=3 && todaySc===0 && activeTasks(gt,today).length>0) warnings.push({ type:'danger', text:`🔥 ${streak} günlük serin tehlikede — bugün henüz görev işaretlemedin` })
+    if (momentum!==null && momentum<=-20) warnings.push({ type:'warn', text:`📉 Son 7 günde performans ${Math.abs(momentum)} puan düştü` })
+    if (consistency<50 && e>7) warnings.push({ type:'warn', text:`⚠️ Tutarlılık düşük — aktif günlerin %${consistency}'inde hedeflere ulaştın` })
+    if (op>=90) warnings.push({ type:'good', text:`🏆 Mükemmel gidiyorsun — genel başarı %${op}` })
+    if (momentum!==null && momentum>=15) warnings.push({ type:'good', text:`📈 Momentum yükseliyor — son 7 günde ${momentum} puan artış` })
+
+    // Hedef sağlık skoru (0-100)
+    const healthScore = Math.round(op*0.4 + consistency*0.35 + Math.min(100,streak*10)*0.25)
+    const healthLabel = healthScore>=75?'Mükemmel':healthScore>=55?'İyi':healthScore>=35?'Orta':'Riskli'
+    const healthColor = healthScore>=75?'var(--good)':healthScore>=55?'var(--accent)':healthScore>=35?'var(--mid)':'var(--bad)'
+
+    return { goal, op, momentum, consistency, dowAvg, bestDow, worstDow, taskStats, fhAvg, shAvg, warnings, healthScore, healthLabel, healthColor, daySc, e }
+  })
+
+  // ── Genel özet (tüm hedefler) ──
+  const totalActive = goals.length
+  const avgHealth   = Math.round(goalAnalytics.reduce((s,g)=>s+g.healthScore,0)/totalActive)
+  const totalStreak = Math.max(...goals.map(g=>getStreak(tasks[g.id]||[],logs[g.id]||[],g.start_date)))
+  const allWarnings = goalAnalytics.flatMap(g=>g.warnings).slice(0,4)
+
+  return (
+    <div>
+
+      {/* Genel özet kartlar */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginBottom:16 }}>
+        {[
+          { label:'Ortalama Sağlık', val:`${avgHealth}`, unit:'%', color:avgHealth>=65?'var(--good)':avgHealth>=40?'var(--mid)':'var(--bad)' },
+          { label:'Aktif Hedef',     val:totalActive,    unit:'', color:'var(--accent)' },
+          { label:'En Uzun Seri',    val:totalStreak,    unit:'🔥', color:'var(--fire)' },
+        ].map((s,i)=>(
+          <div key={i} style={{ background:'var(--surface2)', borderRadius:16, padding:'13px 10px', textAlign:'center' }}>
+            <div style={{ fontSize:9, fontWeight:700, textTransform:'uppercase', letterSpacing:'.07em', color:'var(--text3)', marginBottom:4 }}>{s.label}</div>
+            <div style={{ fontSize:22, fontWeight:800, color:s.color }}>{s.val}<span style={{ fontSize:14 }}>{s.unit}</span></div>
+          </div>
+        ))}
+      </div>
+
+      {/* Uyarılar / içgörüler */}
+      {allWarnings.length>0 && (
+        <div style={{ marginBottom:16 }}>
+          <div style={{ ...css.label, marginBottom:8 }}>Bugünün İçgörüleri</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+            {allWarnings.map((w,i)=>(
+              <div key={i} style={{ background:w.type==='danger'?'rgba(248,113,113,0.08)':w.type==='good'?'rgba(74,222,128,0.08)':'rgba(251,191,36,0.08)', border:`1.5px solid ${w.type==='danger'?'rgba(248,113,113,0.25)':w.type==='good'?'rgba(74,222,128,0.25)':'rgba(251,191,36,0.25)'}`, borderRadius:14, padding:'10px 13px', fontSize:13, color:w.type==='danger'?'var(--bad)':w.type==='good'?'var(--good)':'var(--mid)', fontWeight:500 }}>
+                {w.text}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Her hedef için detaylı analiz */}
+      {goalAnalytics.map(({ goal, op, momentum, consistency, dowAvg, bestDow, worstDow, taskStats, fhAvg, shAvg, healthScore, healthLabel, healthColor, daySc, e }) => (
+        <div key={goal.id} style={{ background:'var(--surface)', border:'1.5px solid var(--border)', borderRadius:20, marginBottom:14, overflow:'hidden' }}>
+
+          {/* Başlık + sağlık skoru */}
+          <div style={{ padding:'14px 16px 12px', borderBottom:'1.5px solid var(--border)' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+              <div style={{ fontSize:14, fontWeight:700, color:'var(--text)', flex:1, marginRight:8 }}>{goal.name}</div>
+              <div style={{ textAlign:'center', flexShrink:0 }}>
+                <div style={{ fontSize:20, fontWeight:800, color:healthColor }}>{healthScore}</div>
+                <div style={{ fontSize:9, fontWeight:700, color:healthColor, textTransform:'uppercase', letterSpacing:'.06em' }}>{healthLabel}</div>
+              </div>
+            </div>
+            {/* Sağlık barı */}
+            <div style={{ height:5, background:'var(--surface2)', borderRadius:99, overflow:'hidden' }}>
+              <div style={{ height:'100%', width:`${healthScore}%`, background:healthColor, borderRadius:99 }} />
+            </div>
+            <div style={{ display:'flex', gap:16, fontSize:11, color:'var(--text3)', marginTop:6, fontWeight:500 }}>
+              <span>İlerleme <b style={{ color:'var(--text)' }}>{op}%</b></span>
+              <span>Tutarlılık <b style={{ color:consistency>=70?'var(--good)':consistency>=40?'var(--mid)':'var(--bad)' }}>{consistency}%</b></span>
+              {momentum!==null && <span>Momentum <b style={{ color:momentum>=0?'var(--good)':'var(--bad)' }}>{momentum>=0?'+':''}{momentum}p</b></span>}
+            </div>
+          </div>
+
+          <div style={{ padding:'12px 16px' }}>
+
+            {/* Haftalık örüntü */}
+            {e>=7 && (
+              <div style={{ marginBottom:14 }}>
+                <div style={{ ...css.label, marginBottom:8 }}>Haftalık Örüntü</div>
+                <div style={{ display:'flex', gap:4, alignItems:'flex-end', height:56 }}>
+                  {DOW_TR.map((d,dow)=>{
+                    const v = dowAvg[dow]
+                    const h = v!==null ? Math.max(6, Math.round(v/100*44)) : 4
+                    const isBest  = dow===bestDow  && v!==null
+                    const isWorst = dow===worstDow && v!==null && v!==dowAvg[bestDow]
+                    const col = isBest?'var(--good)':isWorst?'var(--bad)':'var(--accent)'
+                    return (
+                      <div key={dow} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
+                        <div style={{ fontSize:9, color:isBest?'var(--good)':isWorst?'var(--bad)':'var(--text3)', fontWeight:700 }}>{v!==null?v+'%':''}</div>
+                        <div style={{ width:'100%', height:h, background:v!==null?col:'var(--surface2)', borderRadius:6, opacity:v!==null?0.85:0.3 }} />
+                        <div style={{ fontSize:10, color:isBest?'var(--good)':isWorst?'var(--bad)':'var(--text3)', fontWeight:isBest||isWorst?700:500 }}>{d}</div>
+                      </div>
+                    )
+                  })}
+                </div>
+                {dowAvg[bestDow]!==null && (
+                  <div style={{ fontSize:11, color:'var(--text3)', marginTop:6 }}>
+                    <span style={{ color:'var(--good)', fontWeight:600 }}>En güçlü: {DOW_TR[bestDow]}</span>
+                    {dowAvg[worstDow]!==null && worstDow!==bestDow && <span style={{ color:'var(--bad)', fontWeight:600, marginLeft:10 }}>En zayıf: {DOW_TR[worstDow]}</span>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Kalite trendi */}
+            {fhAvg!==null && shAvg!==null && e>=6 && (
+              <div style={{ background:'var(--surface2)', borderRadius:14, padding:'11px 13px', marginBottom:14 }}>
+                <div style={{ ...css.label, marginBottom:8 }}>İlk Yarı vs Son Yarı</div>
+                <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:11, color:'var(--text3)', marginBottom:3 }}>İlk {Math.floor(e/2)} gün</div>
+                    <div style={{ height:7, background:'var(--surface)', borderRadius:99, overflow:'hidden', marginBottom:3 }}>
+                      <div style={{ height:'100%', width:`${fhAvg}%`, background:'var(--accent)', borderRadius:99, opacity:.7 }} />
+                    </div>
+                    <div style={{ fontSize:13, fontWeight:700, color:'var(--accent)' }}>{fhAvg}%</div>
+                  </div>
+                  <div style={{ fontSize:18, color: shAvg>=fhAvg?'var(--good)':'var(--bad)', fontWeight:800 }}>{shAvg>=fhAvg?'↑':'↓'}</div>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:11, color:'var(--text3)', marginBottom:3 }}>Son {e-Math.floor(e/2)} gün</div>
+                    <div style={{ height:7, background:'var(--surface)', borderRadius:99, overflow:'hidden', marginBottom:3 }}>
+                      <div style={{ height:'100%', width:`${shAvg}%`, background:shAvg>=fhAvg?'var(--good)':'var(--bad)', borderRadius:99, opacity:.8 }} />
+                    </div>
+                    <div style={{ fontSize:13, fontWeight:700, color:shAvg>=fhAvg?'var(--good)':'var(--bad)' }}>{shAvg}%</div>
+                  </div>
+                </div>
+                <div style={{ fontSize:11, color:'var(--text3)', marginTop:6 }}>
+                  {shAvg>fhAvg ? `📈 ${shAvg-fhAvg} puan gelişim — giderek daha iyi gidiyorsun` :
+                   shAvg<fhAvg ? `📉 ${fhAvg-shAvg} puan düşüş — başlangıca göre tempo yavaşladı` :
+                   '➡️ Sabit bir tempo tutturmuşsun'}
+                </div>
+              </div>
+            )}
+
+            {/* Görev bazlı başarı */}
+            {taskStats.length>0 && (
+              <div>
+                <div style={{ ...css.label, marginBottom:8 }}>Görev Başarı Oranları</div>
+                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                  {taskStats.map(t=>(
+                    <div key={t.id}>
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:3 }}>
+                        <span style={{ fontSize:12, color:'var(--text2)', flex:1, marginRight:8 }}>{t.name}</span>
+                        <span style={{ fontSize:12, fontWeight:700, color:t.rate>=70?'var(--good)':t.rate>=40?'var(--mid)':'var(--bad)', minWidth:32, textAlign:'right' }}>{t.rate}%</span>
+                        {t.qAvg>0 && <span style={{ fontSize:10, color:'var(--text3)', marginLeft:8, minWidth:48 }}>kalite {t.qAvg}%</span>}
+                      </div>
+                      <div style={{ height:5, background:'var(--surface2)', borderRadius:99, overflow:'hidden' }}>
+                        <div style={{ height:'100%', width:`${t.rate}%`, background:t.rate>=70?'var(--good)':t.rate>=40?'var(--mid)':'var(--bad)', borderRadius:99 }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
