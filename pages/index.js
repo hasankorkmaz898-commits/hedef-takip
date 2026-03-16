@@ -842,34 +842,45 @@ function RiskMeter({ score }) {
     { label:'Riskli',   color:'#f87171', from:80, to:100 },
   ]
   const activeZone = zones.find(z => score <= z.to) || zones[4]
-  const pct = Math.min(98, Math.max(1, score))
+  const pct = Math.min(97, Math.max(2, score))
 
   return (
     <div>
-      {/* Şerit */}
-      <div style={{ position:'relative', height:32, marginBottom:8 }}>
-        {/* Renkli bölümler */}
-        <div style={{ display:'flex', height:32, borderRadius:99, overflow:'hidden', gap:2 }}>
+      {/* Zone etiketleri — şeridin üstünde */}
+      <div style={{ display:'flex', marginBottom:6, gap:2 }}>
+        {zones.map(z => {
+          const isPast   = score > z.to
+          const isActive = score > z.from && score <= z.to
+          return (
+            <div key={z.label} style={{ flex:1, textAlign:'center' }}>
+              <span style={{ fontSize:11, fontWeight:700, color: isPast||isActive ? z.color : z.color+'55', letterSpacing:'-0.01em' }}>{z.label}</span>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Şerit + ibre */}
+      <div style={{ position:'relative', marginBottom:8 }}>
+        <div style={{ display:'flex', height:22, borderRadius:99, overflow:'hidden', gap:2 }}>
           {zones.map(z => {
             const isPast   = score > z.to
             const isActive = score > z.from && score <= z.to
             return (
-              <div key={z.label} style={{ flex:1, background:isPast||isActive ? z.color : z.color+'28', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                <span style={{ fontSize:9, fontWeight:700, color:isPast||isActive?'rgba(0,0,0,0.5)':'transparent', letterSpacing:'0.04em' }}>{z.label}</span>
-              </div>
+              <div key={z.label} style={{ flex:1, background: isPast||isActive ? z.color : z.color+'22', borderRadius:0 }} />
             )
           })}
         </div>
         {/* İbre */}
-        <div style={{ position:'absolute', top:-6, left:`${pct}%`, transform:'translateX(-50%)', pointerEvents:'none' }}>
-          <div style={{ width:0, height:0, borderLeft:'6px solid transparent', borderRight:'6px solid transparent', borderTop:'9px solid var(--text)', margin:'0 auto' }} />
-          <div style={{ background:'var(--text)', color:'var(--bg)', fontSize:10, fontWeight:800, padding:'2px 6px', borderRadius:99, textAlign:'center', marginTop:2, whiteSpace:'nowrap' }}>{score}</div>
+        <div style={{ position:'absolute', top:-5, left:`${pct}%`, transform:'translateX(-50%)', pointerEvents:'none' }}>
+          <div style={{ width:0, height:0, borderLeft:'6px solid transparent', borderRight:'6px solid transparent', borderTop:'8px solid var(--text)', margin:'0 auto' }} />
+          <div style={{ background:'var(--text)', color:'var(--bg)', fontSize:11, fontWeight:800, padding:'2px 7px', borderRadius:99, textAlign:'center', marginTop:2, whiteSpace:'nowrap' }}>{score}</div>
         </div>
       </div>
+
       {/* Alt etiketler */}
-      <div style={{ display:'flex', justifyContent:'space-between', padding:'0 2px' }}>
-        <span style={{ fontSize:9, color:'#4ade80', fontWeight:700 }}>← Düşük risk</span>
-        <span style={{ fontSize:9, color:'#f87171', fontWeight:700 }}>Yüksek risk →</span>
+      <div style={{ display:'flex', justifyContent:'space-between', padding:'0 2px', marginTop:28 }}>
+        <span style={{ fontSize:10, color:'#4ade80', fontWeight:700 }}>← Düşük risk</span>
+        <span style={{ fontSize:10, color:'#f87171', fontWeight:700 }}>Yüksek risk →</span>
       </div>
     </div>
   )
