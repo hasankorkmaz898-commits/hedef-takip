@@ -64,6 +64,7 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
   const [deleteConfirm,  setDeleteConfirm]= useState(null)
   const [leaveConfirm,   setLeaveConfirm] = useState(null)
   const [liveFlash,      setLiveFlash]    = useState({})
+  const [reactions,      setReactions]    = useState({}) // {log_id: [{emoji,user_id}]}
 
   // Ref'ler — realtime closure için güncel state
   const memberTasksRef = useRef({})
@@ -85,6 +86,9 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
 
     // Tek kanal — tüm değişimleri dinle
     const ch = supabase.channel('shared_realtime_' + user.id)
+      .on('postgres_changes', { event:'*', schema:'public', table:'shared_log_reactions' },
+        async () => { await loadAll() }
+      )
       .on('postgres_changes', { event:'*', schema:'public', table:'shared_logs' },
         async () => {
           // Tüm aktif goalların loglarını yenile
@@ -203,6 +207,15 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
     setMemberTasks(mtMap); setLogs(lMap); setMembers(mMap)
     memberTasksRef.current = mtMap
     membersRef.current = mMap
+
+    // Tepkileri yükle
+    const allLogIds = Object.values(lMap).flat().map(l=>l.id)
+    if (allLogIds.length) {
+      const { data:rx } = await supabase.from('shared_log_reactions').select('*').in('log_id', allLogIds)
+      const rxMap = {}
+      ;(rx||[]).forEach(r => { if (!rxMap[r.log_id]) rxMap[r.log_id]=[]; rxMap[r.log_id].push(r) })
+      setReactions(rxMap)
+    }
   }
 
   async function toggleTask(goalId, taskId) {
@@ -231,6 +244,17 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
     const myT=(memberTasks[goalId]||{})[user.id]||[]
     setEditTaskList(myT.length?myT.map(t=>({...t})):[{name:''}])
     setEditingTasks(goalId)
+  }
+
+  async function toggleReaction(logId, emoji) {
+    const ex = (reactions[logId]||[]).find(r=>r.user_id===user.id&&r.emoji===emoji)
+    if (ex) {
+      await supabase.from('shared_log_reactions').delete().eq('id',ex.id)
+      setReactions(p=>({...p,[logId]:(p[logId]||[]).filter(r=>r.id!==ex.id)}))
+    } else {
+      const { data:r } = await supabase.from('shared_log_reactions').insert({ log_id:logId, user_id:user.id, emoji }).select().single()
+      if (r) setReactions(p=>({...p,[logId]:[...(p[logId]||[]),r]}))
+    }
   }
 
   async function saveMyTasks(goalId) {
@@ -498,11 +522,28 @@ export default function SharedGoalsPanel({ user, initialFriend, onClose, inline=
                                   <div style={{ textAlign:'center',padding:'20px',color:'var(--text3)',fontSize:13,background:'#0d0f14',borderRadius:10 }}>Henüz görev eklemedi</div>
                                 ):pTasks.map(t=>{
                                   const log=pLogs.find(l=>l.task_id===t.id); const q=log?.quality
+                                  const logRx = log ? (reactions[log.id]||[]) : []
+                                  const EMOJIS = ['👏','🔥','💪','⭐','😮']
                                   return (
-                                    <div key={t.id} style={{ background:q?S.qBg[q]:'#0d0f14',border:`1.5px solid ${q?S.qBord[q]:'var(--border)'}`,borderRadius:9,padding:'10px 12px',marginBottom:6,display:'flex',alignItems:'center',gap:9 }}>
-                                      <div style={{ width:20,height:20,borderRadius:5,border:`2px solid ${q?S.qCol[q]:'var(--border2)'}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0,background:q?S.qBg[q]:'transparent',color:q?S.qCol[q]:'transparent' }}>{q?QSym[q]:''}</div>
-                                      <div style={{ flex:1,fontSize:13,color:q?'var(--text3)':'var(--text)',textDecoration:q?'line-through':'none' }}>{t.name}</div>
-                                      {q&&<span style={{ fontSize:10,fontWeight:700,color:S.qCol[q] }}>{QL[q]}</span>}
+                                    <div key={t.id} style={{ background:q?S.qBg[q]:'#0d0f14',border:`1.5px solid ${q?S.qBord[q]:'var(--border)'}`,borderRadius:9,padding:'10px 12px',marginBottom:6 }}>
+                                      <div style={{ display:'flex',alignItems:'center',gap:9 }}>
+                                        <div style={{ width:20,height:20,borderRadius:5,border:`2px solid ${q?S.qCol[q]:'var(--border2)'}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0,background:q?S.qBg[q]:'transparent',color:q?S.qCol[q]:'transparent' }}>{q?QSym[q]:''}</div>
+                                        <div style={{ flex:1,fontSize:13,color:q?'var(--text3)':'var(--text)',textDecoration:q?'line-through':'none' }}>{t.name}</div>
+                                        {q&&<span style={{ fontSize:10,fontWeight:700,color:S.qCol[q] }}>{QL[q]}</span>}
+                                      </div>
+                                      {q && (
+                                        <div style={{ display:'flex',gap:4,marginTop:8,flexWrap:'wrap' }}>
+                                          {EMOJIS.map(em=>{
+                                            const cnt = logRx.filter(r=>r.emoji===em).length
+                                            const mine = logRx.some(r=>r.emoji===em&&r.user_id===user.id)
+                                            return (
+                                              <button key={em} onClick={()=>toggleReaction(log.id,em)} style={{ padding:'3px 8px',borderRadius:99,border:`1.5px solid ${mine?'rgba(124,111,247,0.5)':'var(--border)'}`,background:mine?'rgba(124,111,247,0.12)':'transparent',fontSize:12,cursor:'pointer',display:'flex',alignItems:'center',gap:3 }}>
+                                                {em}{cnt>0&&<span style={{ fontSize:10,fontWeight:700,color:mine?'#a89cf7':'var(--text3)' }}>{cnt}</span>}
+                                              </button>
+                                            )
+                                          })}
+                                        </div>
+                                      )}
                                     </div>
                                   )
                                 })}
