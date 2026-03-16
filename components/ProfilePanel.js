@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '../lib/supabase'
+import ChatPanel from './ChatPanel'
 
 const css = {
   overlay: {
@@ -60,6 +61,7 @@ const css = {
 
 export default function ProfilePanel({ user, onClose, onOpenSharedGoal, onSignOut }) {
   const [profile, setProfile] = useState(null)
+  const [chatFriend, setChatFriend] = useState(null)
   const [friends, setFriends] = useState([])
   const [pending, setPending] = useState([])  // gelen istekler
   const [sent, setSent]       = useState([])   // gönderilen istekler
@@ -252,6 +254,11 @@ export default function ProfilePanel({ user, onClose, onOpenSharedGoal, onSignOu
                     <div style={{ fontSize: 11, color: '#5c6475' }}>{f.user_code}</div>
                   </div>
                   <button
+                    onClick={() => setChatFriend(f)}
+                    style={{ ...css.btn('secondary'), padding: '7px 10px', fontSize: 14 }}
+                    title="Mesaj gönder"
+                  >💬</button>
+                  <button
                     onClick={() => { onOpenSharedGoal(f); onClose() }}
                     style={{ ...css.btn('primary'), padding: '7px 12px', fontSize: 12 }}
                   >Ortak Hedef</button>
@@ -305,6 +312,8 @@ export default function ProfilePanel({ user, onClose, onOpenSharedGoal, onSignOu
           </div>
         )}
       </div>
+
+      {chatFriend && <ChatPanel user={user} friend={chatFriend} onClose={()=>setChatFriend(null)} />}
     </>
   )
 }
