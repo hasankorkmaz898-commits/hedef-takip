@@ -1416,7 +1416,7 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
   function handleSave() {
     const filtered = taskList.filter(t=>t.name.trim())
     if (!name.trim()||!days||!filtered.length) { alert('Lütfen tüm alanları doldur.'); return }
-    onSave(name.trim(), parseInt(days), filtered.map(t=>({ name:t.name.trim(), active_days:t.active_days })))
+    onSave(name.trim(), parseInt(days), filtered.map(t=>({ id:t.id, name:t.name.trim(), active_days:t.active_days })))
   }
 
   return (
@@ -1492,8 +1492,8 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
                     style={{ color:'var(--text3)', fontSize:16, cursor:'grab', flexShrink:0, padding:'0 2px', userSelect:'none', lineHeight:1, display:'flex', alignItems:'center' }}
                   >⠿</div>
                   <input
-                    defaultValue={t.name}
-                    onBlur={e=>setTaskList(p=>p.map((x,j)=>j===i?{...x,name:e.target.value}:x))}
+                    value={t.name}
+                    onChange={e=>setTaskList(p=>p.map((x,j)=>j===i?{...x,name:e.target.value}:x))}
                     placeholder={`Görev ${i+1}`}
                     style={{ ...css.input, flex:1 }}
                   />
