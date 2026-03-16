@@ -209,6 +209,19 @@ export default function Home() {
   function showToast(msg) { setToast(msg); setTimeout(()=>setToast(''),3000) }
 
   /* Goal CRUD */
+  async function reorderTasks(goalId, fromIdx, toIdx) {
+    const current = [...(tasks[goalId]||[])]
+    const [moved] = current.splice(fromIdx, 1)
+    current.splice(toIdx, 0, moved)
+    // Optimistic update — UI anında güncellenir
+    setTasks(p => ({...p, [goalId]: current}))
+    // Supabase'e yaz
+    const supabase = createClient()
+    await Promise.all(current.map((t, i) =>
+      supabase.from('tasks').update({ order_index: i }).eq('id', t.id)
+    ))
+  }
+
   async function handleSaveGoal(name, totalDays, taskList) {
     // taskList: [{id?, name, active_days}]
     // id varsa mevcut task → güncelle (log geçmişi korunur)
@@ -358,6 +371,7 @@ export default function Home() {
               onNoteChange={(k,v) => setNoteInputs(p=>({...p,[k]:v}))}
               onEdit={() => { setEditGoal(goal); setShowModal(true) }}
               onDelete={() => handleDeleteGoal(goal.id)}
+              onReorderTasks={(from,to) => reorderTasks(goal.id, from, to)}
             />
           ))}
         </div>
@@ -479,8 +493,22 @@ function GoogleIcon() {
 }
 
 /* ─── Goal Card ──────────────────────────────────────────────────────────── */
-function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabChange, onToggleHist, onToggleTask, onSetQuality, onRemoveLog, onSaveNote, onNoteChange, onEdit, onDelete, isOpen, onToggleOpen }) {
+function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabChange, onToggleHist, onToggleTask, onSetQuality, onRemoveLog, onSaveNote, onNoteChange, onEdit, onDelete, isOpen, onToggleOpen, onReorderTasks }) {
   const today    = todayStr()
+  const dragIdx     = useRef(null)
+  const dragOverIdx = useRef(null)
+  const [dragging,  setDragging] = useState(false)
+
+  function handleDragStart(i) { dragIdx.current = i; setDragging(true) }
+  function handleDragEnter(i) { dragOverIdx.current = i }
+  function handleDragEnd() {
+    setDragging(false)
+    const from = dragIdx.current
+    const to   = dragOverIdx.current
+    dragIdx.current = null; dragOverIdx.current = null
+    if (from === null || to === null || from === to) return
+    onReorderTasks(from, to)
+  }
   const op       = Math.round(overallScore(tasks,logs,goal.start_date,goal.total_days)*100)
   const tp       = Math.round(dayScore(tasks,logs,today)*100)
   const streak   = getStreak(tasks,logs,goal.start_date)
@@ -606,7 +634,7 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                   <button onClick={async()=>{ for(const l of todayLogs) await createClient().from('daily_logs').delete().eq('id',l.id) }} style={{ background:'none', border:'none', fontSize:12, color:'var(--text3)', cursor:'pointer' }}>Sıfırla</button>
                 </div>
                 <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
-                  {tasks.map(t => {
+                  {tasks.map((t,ti) => {
                     const isActive = taskActiveOnDay(t, today)
                     const log = todayLogs.find(l=>l.task_id===t.id)
                     const q   = log?.quality
@@ -615,15 +643,30 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                     const DOW_TR = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
                     const activeDayLabels = t.active_days?.length ? t.active_days.map(d=>DOW_TR[d]).join(' · ') : null
                     return (
-                      <div key={t.id} style={{ background:!isActive?'transparent':q?qBg[q]:'var(--surface2)', border:`1.5px solid ${!isActive?'var(--border)':q?qBorder[q]:'var(--border)'}`, borderRadius:'var(--r-md)', overflow:'hidden', opacity:isActive?1:0.45 }}>
-                        <div style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 14px', cursor:isActive?'pointer':'default' }} onClick={()=>isActive&&onToggleTask(t.id)}>
-                          <div style={{ width:22, height:22, borderRadius:6, border:`2px solid ${q?`var(--${q})`:isActive?'var(--border2)':'var(--border)'}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, flexShrink:0, background:q?qBg[q]:'transparent', color:`var(--${q||'text3'})`, fontWeight:700 }}>{q ? QSym[q] : ''}</div>
-                          <div style={{ flex:1 }}>
-                            <div style={{ fontSize:14, textDecoration:q?'line-through':'none', color:q?'var(--text3)':isActive?'var(--text)':'var(--text3)' }}>{t.name}</div>
-                            {!isActive && activeDayLabels && <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>{activeDayLabels}</div>}
+                      <div
+                        key={t.id}
+                        draggable
+                        onDragStart={()=>handleDragStart(ti)}
+                        onDragEnter={()=>handleDragEnter(ti)}
+                        onDragEnd={handleDragEnd}
+                        onDragOver={e=>e.preventDefault()}
+                        style={{ background:!isActive?'transparent':q?qBg[q]:'var(--surface2)', border:`1.5px solid ${!isActive?'var(--border)':q?qBorder[q]:'var(--border)'}`, borderRadius:'var(--r-md)', overflow:'hidden', opacity:isActive?1:0.45, transition:'transform 0.15s, opacity 0.15s' }}
+                      >
+                        <div style={{ display:'flex', alignItems:'center', gap:8, padding:'12px 14px' }}>
+                          {/* Sürükleme tutamacı */}
+                          <div
+                            style={{ color:'var(--text3)', fontSize:15, cursor:'grab', flexShrink:0, userSelect:'none', lineHeight:1, paddingRight:4 }}
+                            title="Sürükle"
+                          >⠿</div>
+                          <div style={{ display:'flex', alignItems:'center', gap:12, flex:1, cursor:isActive?'pointer':'default' }} onClick={()=>isActive&&onToggleTask(t.id)}>
+                            <div style={{ width:22, height:22, borderRadius:6, border:`2px solid ${q?`var(--${q})`:isActive?'var(--border2)':'var(--border)'}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, flexShrink:0, background:q?qBg[q]:'transparent', color:`var(--${q||'text3'})`, fontWeight:700 }}>{q ? QSym[q] : ''}</div>
+                            <div style={{ flex:1 }}>
+                              <div style={{ fontSize:14, textDecoration:q?'line-through':'none', color:q?'var(--text3)':isActive?'var(--text)':'var(--text3)' }}>{t.name}</div>
+                              {!isActive && activeDayLabels && <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>{activeDayLabels}</div>}
+                            </div>
+                            {q && isActive && <span style={{ fontSize:11, fontWeight:700, color:`var(--${q})`, background:qBg[q], padding:'2px 8px', borderRadius:99 }}>{QLabel[q]}</span>}
+                            {!isActive && <span style={{ fontSize:10, color:'var(--text3)', background:'var(--surface2)', padding:'2px 8px', borderRadius:99 }}>bugün yok</span>}
                           </div>
-                          {q && isActive && <span style={{ fontSize:11, fontWeight:700, color:`var(--${q})`, background:qBg[q], padding:'2px 8px', borderRadius:99 }}>{QLabel[q]}</span>}
-                          {!isActive && <span style={{ fontSize:10, color:'var(--text3)', background:'var(--surface2)', padding:'2px 8px', borderRadius:99 }}>bugün yok</span>}
                         </div>
                         {q && isActive && (
                           <div style={{ display:'flex', gap:6, padding:'0 14px 12px' }}>
