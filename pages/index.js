@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { createClient } from '../lib/supabase'
 import ProfilePanel from '../components/ProfilePanel'
 import SharedGoalsPanel from '../components/SharedGoalsPanel'
@@ -1183,7 +1183,25 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
     : [{ name:'', active_days:[], _key:0 }]
   const [taskList, setTaskList] = useState(initTasks)
   const [dayPicker, setDayPicker] = useState(null)
-  const [showTemplates, setShowTemplates] = useState(!goal) // yeni hedefte şablonları göster
+  const [showTemplates, setShowTemplates] = useState(!goal)
+  const dragIdx = useRef(null)
+  const dragOverIdx = useRef(null)
+
+  function onDragStart(i) { dragIdx.current = i }
+  function onDragEnter(i) { dragOverIdx.current = i }
+  function onDragEnd() {
+    const from = dragIdx.current
+    const to   = dragOverIdx.current
+    if (from === null || to === null || from === to) { dragIdx.current=null; dragOverIdx.current=null; return }
+    setTaskList(p => {
+      const arr = [...p]
+      const [item] = arr.splice(from, 1)
+      arr.splice(to, 0, item)
+      return arr
+    })
+    dragIdx.current = null
+    dragOverIdx.current = null
+  }
 
   function toggleDay(i, dow) {
     setTaskList(p => p.map((t,j) => {
@@ -1255,9 +1273,22 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
           <div style={{ ...css.label, marginBottom:6 }}>Görevler</div>
           <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
             {taskList.map((t,i)=>(
-              <div key={t._key}>
+              <div
+                key={t._key}
+                draggable
+                onDragStart={()=>onDragStart(i)}
+                onDragEnter={()=>onDragEnter(i)}
+                onDragEnd={onDragEnd}
+                onDragOver={e=>e.preventDefault()}
+                style={{ opacity:1, transition:'opacity 0.15s' }}
+              >
                 {/* Görev satırı */}
                 <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:6 }}>
+                  {/* Sürükleme tutamacı */}
+                  <div
+                    title="Sürükle"
+                    style={{ color:'var(--text3)', fontSize:16, cursor:'grab', flexShrink:0, padding:'0 2px', userSelect:'none', lineHeight:1, display:'flex', alignItems:'center' }}
+                  >⠿</div>
                   <input
                     defaultValue={t.name}
                     onBlur={e=>setTaskList(p=>p.map((x,j)=>j===i?{...x,name:e.target.value}:x))}
