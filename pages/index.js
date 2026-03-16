@@ -834,65 +834,42 @@ function NoteSection({ goalId, ds, notes, noteInputs, onNoteChange, onSaveNote }
 
 /* ─── Risk Metre ─────────────────────────────────────────────────────────── */
 function RiskMeter({ score }) {
-  // score: 0-100, 0=en iyi (yeşil), 100=en kötü (kırmızı)
-  // Yarım daire gösterge — SVG tabanlı
-  const r = 54
-  const cx = 70, cy = 68
-  const startAngle = -180
-  const totalArc = 180
-  const needleAngle = startAngle + (score / 100) * totalArc
-
-  // SVG arc yardımcısı
-  function polarToXY(angle, radius) {
-    const rad = (angle * Math.PI) / 180
-    return { x: cx + radius * Math.cos(rad), y: cy + radius * Math.sin(rad) }
-  }
-  function arcPath(startA, endA, r) {
-    const s = polarToXY(startA, r)
-    const e = polarToXY(endA, r)
-    const large = Math.abs(endA - startA) > 180 ? 1 : 0
-    return `M ${s.x} ${s.y} A ${r} ${r} 0 ${large} 1 ${e.x} ${e.y}`
-  }
-
   const zones = [
-    { from:-180, to:-108, color:'#4ade80', label:'Mükemmel' },
-    { from:-108, to:-36,  color:'#7c6ff7', label:'İyi'      },
-    { from:-36,  to:36,   color:'#fbbf24', label:'Orta'     },
-    { from:36,   to:108,  color:'#fb923c', label:'Zayıf'    },
-    { from:108,  to:180,  color:'#f87171', label:'Riskli'   },
+    { label:'Mükemmel', color:'#4ade80', from:0,  to:20 },
+    { label:'İyi',      color:'#7c6ff7', from:20, to:40 },
+    { label:'Orta',     color:'#fbbf24', from:40, to:60 },
+    { label:'Zayıf',    color:'#fb923c', from:60, to:80 },
+    { label:'Riskli',   color:'#f87171', from:80, to:100 },
   ]
-
-  const needle = polarToXY(needleAngle, r - 8)
-  const riskLabel = score<=20?'Mükemmel':score<=40?'İyi':score<=60?'Orta':score<=80?'Zayıf':'Riskli'
-  const riskColor = score<=20?'#4ade80':score<=40?'#7c6ff7':score<=60?'#fbbf24':score<=80?'#fb923c':'#f87171'
+  const activeZone = zones.find(z => score <= z.to) || zones[4]
+  const pct = Math.min(98, Math.max(1, score))
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', alignItems:'center' }}>
-      <svg width={140} height={80} viewBox="0 0 140 80">
-        {/* Arka zemin yayı */}
-        <path d={arcPath(-180,0,r)} fill="none" stroke="var(--surface2)" strokeWidth={14} strokeLinecap="round"/>
-        {/* Renkli zone yayları */}
-        {zones.map((z,i)=>(
-          <path key={i} d={arcPath(z.from,z.to,r)} fill="none" stroke={z.color} strokeWidth={10} strokeLinecap="butt" opacity={0.85}/>
-        ))}
+    <div>
+      {/* Şerit */}
+      <div style={{ position:'relative', height:32, marginBottom:8 }}>
+        {/* Renkli bölümler */}
+        <div style={{ display:'flex', height:32, borderRadius:99, overflow:'hidden', gap:2 }}>
+          {zones.map(z => {
+            const isPast   = score > z.to
+            const isActive = score > z.from && score <= z.to
+            return (
+              <div key={z.label} style={{ flex:1, background:isPast||isActive ? z.color : z.color+'28', display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <span style={{ fontSize:9, fontWeight:700, color:isPast||isActive?'rgba(0,0,0,0.5)':'transparent', letterSpacing:'0.04em' }}>{z.label}</span>
+              </div>
+            )
+          })}
+        </div>
         {/* İbre */}
-        <line
-          x1={cx} y1={cy}
-          x2={needle.x} y2={needle.y}
-          stroke="var(--text)" strokeWidth={2.5} strokeLinecap="round"
-        />
-        <circle cx={cx} cy={cy} r={4} fill="var(--text)"/>
-        {/* Merkez etiket */}
-        <text x={cx} y={cy+18} textAnchor="middle" fontSize={11} fontWeight="700" fill={riskColor}>{riskLabel}</text>
-      </svg>
-      {/* Zone etiketleri */}
-      <div style={{ display:'flex', gap:5, flexWrap:'wrap', justifyContent:'center', marginTop:2 }}>
-        {zones.map((z,i)=>(
-          <div key={i} style={{ display:'flex', alignItems:'center', gap:3, fontSize:9, color:'var(--text3)', fontWeight:600 }}>
-            <div style={{ width:7, height:7, borderRadius:2, background:z.color }}/>
-            {z.label}
-          </div>
-        ))}
+        <div style={{ position:'absolute', top:-6, left:`${pct}%`, transform:'translateX(-50%)', pointerEvents:'none' }}>
+          <div style={{ width:0, height:0, borderLeft:'6px solid transparent', borderRight:'6px solid transparent', borderTop:'9px solid var(--text)', margin:'0 auto' }} />
+          <div style={{ background:'var(--text)', color:'var(--bg)', fontSize:10, fontWeight:800, padding:'2px 6px', borderRadius:99, textAlign:'center', marginTop:2, whiteSpace:'nowrap' }}>{score}</div>
+        </div>
+      </div>
+      {/* Alt etiketler */}
+      <div style={{ display:'flex', justifyContent:'space-between', padding:'0 2px' }}>
+        <span style={{ fontSize:9, color:'#4ade80', fontWeight:700 }}>← Düşük risk</span>
+        <span style={{ fontSize:9, color:'#f87171', fontWeight:700 }}>Yüksek risk →</span>
       </div>
     </div>
   )
@@ -1093,12 +1070,14 @@ function AnalyticsPanel({ goals, tasks, logs }) {
           <div style={{ padding:'14px 16px 12px', borderBottom:'1.5px solid var(--border)' }}>
             <div style={{ fontSize:14, fontWeight:700, color:'var(--text)', marginBottom:12 }}>{goal.name}</div>
 
-            {/* Risk metre + metrikler yan yana */}
-            <div style={{ display:'flex', alignItems:'flex-start', gap:12 }}>
-              <div style={{ flexShrink:0 }}>
-                <RiskMeter score={riskScore} />
-              </div>
-              <div style={{ flex:1, display:'flex', flexDirection:'column', gap:8, paddingTop:6 }}>
+            {/* Risk metre — tam genişlik şerit */}
+            <div style={{ marginBottom:12 }}>
+              <RiskMeter score={riskScore} />
+            </div>
+
+            {/* Metrikler */}
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
                 {/* İlerleme */}
                 <div>
                   <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'var(--text3)', marginBottom:3 }}>
@@ -1117,22 +1096,20 @@ function AnalyticsPanel({ goals, tasks, logs }) {
                     <div style={{ height:'100%', width:`${consistency}%`, background:consistency>=70?'var(--good)':consistency>=40?'var(--mid)':'var(--bad)', borderRadius:99 }}/>
                   </div>
                 </div>
-                {/* Momentum */}
-                {momentum!==null && (
-                  <div style={{ display:'flex', gap:8, fontSize:11, color:'var(--text3)' }}>
-                    <span>7 günlük trend <b style={{ color:momentum>=0?'var(--good)':'var(--bad)' }}>{momentum>=0?'+':''}{momentum}p</b></span>
-                    {recentTrend!==null && <span>Son 3 gün <b style={{ color:recentTrend>=0?'var(--good)':'var(--bad)' }}>{recentTrend>=0?'↑':'↓'}</b></span>}
-                  </div>
-                )}
-                {/* Kurtarılabilirlik */}
-                {neededPerDay!==null && remaining>0 && (
-                  <div style={{ background: recoverable?'rgba(74,222,128,0.08)':'rgba(248,113,113,0.08)', border:`1px solid ${recoverable?'rgba(74,222,128,0.2)':'rgba(248,113,113,0.2)'}`, borderRadius:10, padding:'6px 10px', fontSize:11, color: recoverable?'var(--good)':'var(--bad)', fontWeight:500 }}>
-                    {recoverable
-                      ? `✓ ${remaining} günde hedefe ulaşmak mümkün`
-                      : `✗ Mevcut tempoda ${remaining} günde yetişmek zor`}
-                  </div>
-                )}
               </div>
+              {/* Momentum */}
+              {momentum!==null && (
+                <div style={{ display:'flex', gap:16, fontSize:11, color:'var(--text3)' }}>
+                  <span>7 günlük trend <b style={{ color:momentum>=0?'var(--good)':'var(--bad)' }}>{momentum>=0?'+':''}{momentum}p</b></span>
+                  {recentTrend!==null && <span>Son 3 gün <b style={{ color:recentTrend>=0?'var(--good)':'var(--bad)' }}>{recentTrend>=0?'↑':'↓'}</b></span>}
+                </div>
+              )}
+              {/* Kurtarılabilirlik */}
+              {neededPerDay!==null && remaining>0 && (
+                <div style={{ background:recoverable?'rgba(74,222,128,0.08)':'rgba(248,113,113,0.08)', border:`1px solid ${recoverable?'rgba(74,222,128,0.2)':'rgba(248,113,113,0.2)'}`, borderRadius:10, padding:'7px 11px', fontSize:11, color:recoverable?'var(--good)':'var(--bad)', fontWeight:600 }}>
+                  {recoverable ? `✓ ${remaining} günde hedefe ulaşmak mümkün` : `✗ Mevcut tempoda ${remaining} günde yetişmek zor`}
+                </div>
+              )}
             </div>
           </div>
 
