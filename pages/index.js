@@ -592,7 +592,7 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
           </div>
 
           <div style={{ display:'flex', background:'var(--surface2)', borderRadius:'var(--r-md)', padding:3, margin:'12px 16px 0' }}>
-            {[['tasks','Görevler'],['history','Geçmiş'],['chart','Grafik']].map(([t,l]) => (
+            {[['tasks','Görevler'],['history','Geçmiş'],['chart','Grafik'],['calendar','Takvim']].map(([t,l]) => (
               <button key={t} style={css.tab(tab===t)} onClick={()=>onTabChange(t)}>{l}</button>
             ))}
           </div>
@@ -729,6 +729,12 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {tab==='calendar' && (
+              <div className="anim-tab">
+                <HeatmapCalendar tasks={tasks} logs={logs} startDate={goal.start_date} totalDays={goal.total_days} />
               </div>
             )}
 
@@ -1016,8 +1022,157 @@ function AnalyticsPanel({ goals, tasks, logs }) {
   )
 }
 
+
+/* ─── Heatmap Calendar ───────────────────────────────────────────────────── */
+function HeatmapCalendar({ tasks, logs, startDate, totalDays }) {
+  const today = todayStr()
+  // Son 3 ayı göster (veya hedef başından beri hangisi kısaysa)
+  const endDate   = today
+  const startShow = addDays(today, -89) < startDate ? startDate : addDays(today, -89)
+
+  // Tüm günleri hesapla
+  const days = []
+  let cur = new Date(startShow + 'T00:00:00')
+  const end = new Date(endDate + 'T00:00:00')
+  while (cur <= end) {
+    const ds = toDate(cur)
+    const sc = dayScore(tasks, logs, ds)
+    const isActive = sc >= 0
+    const isToday  = ds === today
+    const isFuture = ds > today
+    const inGoal   = ds >= startDate
+    days.push({ ds, sc, isActive, isToday, isFuture, inGoal, dow: cur.getDay() })
+    cur.setDate(cur.getDate() + 1)
+  }
+
+  // Haftalara böl (Pazartesi başlangıç)
+  // İlk günün haftasını bul
+  const firstDow = days[0]?.dow ?? 0
+  const padStart = firstDow === 0 ? 6 : firstDow - 1
+  const paddedDays = [...Array(padStart).fill(null), ...days]
+  const weeks = []
+  for (let i = 0; i < paddedDays.length; i += 7) weeks.push(paddedDays.slice(i, i+7))
+
+  // Ay etiketleri
+  const monthLabels = []
+  let lastMonth = -1
+  weeks.forEach((week, wi) => {
+    const firstReal = week.find(d => d !== null)
+    if (!firstReal) return
+    const m = new Date(firstReal.ds + 'T00:00:00').getMonth()
+    if (m !== lastMonth) { monthLabels.push({ wi, label: MONTHS[m] }); lastMonth = m }
+  })
+
+  function cellColor(d) {
+    if (!d || !d.inGoal || d.isFuture) return 'var(--surface2)'
+    if (!d.isActive) return 'rgba(124,111,247,0.08)' // aktif görev yok bu gün
+    const sc = d.sc
+    if (sc >= 0.8) return 'rgba(74,222,128,0.85)'
+    if (sc >= 0.5) return 'rgba(74,222,128,0.45)'
+    if (sc >= 0.2) return 'rgba(251,191,36,0.55)'
+    if (sc  >  0)  return 'rgba(248,113,113,0.5)'
+    return 'rgba(248,113,113,0.18)' // aktif gün ama yapılmadı
+  }
+
+  const DOW_SHORT = ['Pt','Sa','Ça','Pe','Cu','Ct','Pz']
+
+  // İstatistikler
+  const activeDays = days.filter(d => d.inGoal && !d.isFuture && d.isActive)
+  const doneDays   = activeDays.filter(d => d.sc >= 0.5)
+  const perfectDays= activeDays.filter(d => d.sc >= 0.9)
+  const streak     = getStreak(tasks, logs, startDate)
+
+  return (
+    <div>
+      <div style={{ ...css.label, marginBottom:10 }}>Aktivite Takvimi</div>
+
+      {/* Ay etiketleri */}
+      <div style={{ display:'flex', marginBottom:4, paddingLeft:22 }}>
+        {weeks.map((_, wi) => {
+          const ml = monthLabels.find(m => m.wi === wi)
+          return <div key={wi} style={{ flex:1, fontSize:9, color:'var(--text3)', fontWeight:600, textAlign:'center' }}>{ml ? ml.label : ''}</div>
+        })}
+      </div>
+
+      <div style={{ display:'flex', gap:2 }}>
+        {/* Gün etiketleri */}
+        <div style={{ display:'flex', flexDirection:'column', gap:2, marginRight:2 }}>
+          {DOW_SHORT.map((d,i) => (
+            <div key={i} style={{ height:12, fontSize:8, color:'var(--text3)', display:'flex', alignItems:'center', fontWeight:500 }}>{i%2===0?d:''}</div>
+          ))}
+        </div>
+
+        {/* Hücre grid */}
+        <div style={{ display:'flex', gap:2, flex:1 }}>
+          {weeks.map((week, wi) => (
+            <div key={wi} style={{ display:'flex', flexDirection:'column', gap:2, flex:1 }}>
+              {week.map((d, di) => (
+                <div key={di} title={d ? `${d.ds}: ${d.isActive ? Math.round(d.sc*100)+'%' : 'Görev yok'}` : ''} style={{
+                  height:12,
+                  borderRadius:3,
+                  background: cellColor(d),
+                  border: d?.isToday ? '1.5px solid var(--accent)' : '1.5px solid transparent',
+                }} />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div style={{ display:'flex', gap:10, marginTop:8, flexWrap:'wrap' }}>
+        {[
+          ['rgba(74,222,128,0.85)','%80+'],
+          ['rgba(74,222,128,0.45)','%50+'],
+          ['rgba(251,191,36,0.55)','%20+'],
+          ['rgba(248,113,113,0.5)','Düşük'],
+          ['rgba(248,113,113,0.18)','Yapılmadı'],
+          ['rgba(124,111,247,0.08)','Görev yok'],
+        ].map(([c,l]) => (
+          <div key={l} style={{ display:'flex', alignItems:'center', gap:4, fontSize:10, color:'var(--text3)' }}>
+            <div style={{ width:10, height:10, borderRadius:2, background:c }} />{l}
+          </div>
+        ))}
+      </div>
+
+      {/* Özet istatistikler */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginTop:14 }}>
+        {[
+          { label:'Aktif Gün', val:doneDays.length, color:'var(--good)' },
+          { label:'Mükemmel', val:perfectDays.length, color:'var(--accent)' },
+          { label:'Seri', val:`${streak}🔥`, color:'var(--fire)' },
+        ].map((s,i) => (
+          <div key={i} style={{ background:'var(--surface2)', borderRadius:12, padding:'10px 0', textAlign:'center' }}>
+            <div style={{ fontSize:9, color:'var(--text3)', fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em', marginBottom:3 }}>{s.label}</div>
+            <div style={{ fontSize:18, fontWeight:800, color:s.color }}>{s.val}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /* ─── Goal Modal ─────────────────────────────────────────────────────────── */
 const DOW_TR  = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
+
+const GOAL_TEMPLATES = [
+  { icon:'🏃', name:'30 günde koşu alışkanlığı', days:30,
+    tasks:[ {name:'Sabah 5km koşu', active_days:[1,2,3,4,5]}, {name:'Esneme hareketleri', active_days:[]}, {name:'Protein shake iç', active_days:[]} ] },
+  { icon:'📚', name:'Günde 30 sayfa kitap', days:30,
+    tasks:[ {name:'30 sayfa oku', active_days:[]}, {name:'Not al', active_days:[]} ] },
+  { icon:'🧘', name:'21 günde meditasyon', days:21,
+    tasks:[ {name:'10 dk meditasyon', active_days:[]}, {name:'Nefes egzersizi', active_days:[]} ] },
+  { icon:'💧', name:'Su içme alışkanlığı', days:30,
+    tasks:[ {name:'Sabah 1 bardak', active_days:[]}, {name:'Öğlen 2 bardak', active_days:[]}, {name:'Akşam 1 bardak', active_days:[]} ] },
+  { icon:'💪', name:'Haftalık spor rutini', days:60,
+    tasks:[ {name:'Antrenman yap', active_days:[1,3,5]}, {name:'Esneme', active_days:[1,2,3,4,5,6,0]}, {name:'Protein al', active_days:[1,3,5]} ] },
+  { icon:'🥗', name:'Sağlıklı beslenme', days:30,
+    tasks:[ {name:'Kahvaltı yap', active_days:[]}, {name:'Fast food yeme', active_days:[]}, {name:'Sebze/meyve ye', active_days:[]} ] },
+  { icon:'✍️', name:'Günlük yazma', days:30,
+    tasks:[ {name:'Günlük yaz (5 dk)', active_days:[]}, {name:'3 minnet yaz', active_days:[]} ] },
+  { icon:'📵', name:'Telefon detoksu', days:21,
+    tasks:[ {name:'Sabah 1 saat telefonsuz', active_days:[]}, {name:'Akşam yemekte telefon yok', active_days:[]}, {name:'Yatmadan 1 saat önce kapat', active_days:[]} ] },
+]
 
 function GoalModal({ goal, tasks, onSave, onClose }) {
   const [name,     setName]     = useState(goal?.name||'')
@@ -1027,7 +1182,8 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
     ? tasks.map((t,i) => ({ id:t.id, name:t.name, active_days:t.active_days||[], _key:i }))
     : [{ name:'', active_days:[], _key:0 }]
   const [taskList, setTaskList] = useState(initTasks)
-  const [dayPicker, setDayPicker] = useState(null) // index of open picker
+  const [dayPicker, setDayPicker] = useState(null)
+  const [showTemplates, setShowTemplates] = useState(!goal) // yeni hedefte şablonları göster
 
   function toggleDay(i, dow) {
     setTaskList(p => p.map((t,j) => {
@@ -1046,10 +1202,44 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(10,12,18,0.88)', backdropFilter:'blur(6px)', zIndex:200, display:'flex', alignItems:'flex-end', justifyContent:'center', padding:'0' }} onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={{ background:'var(--surface)', borderRadius:'26px 26px 0 0', padding:'26px 20px 44px', width:'100%', maxWidth:640, maxHeight:'90vh', overflowY:'auto' }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
           <div style={{ fontSize:18, fontWeight:800 }}>{goal?'Hedefi Düzenle':'Yeni Hedef'}</div>
           <button onClick={onClose} style={{ ...css.iconBtn }}>✕</button>
         </div>
+
+        {/* Şablon seçici — sadece yeni hedefte */}
+        {!goal && (
+          <div style={{ marginBottom:16 }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
+              <div style={{ ...css.label }}>Şablondan Başla</div>
+              <button onClick={()=>setShowTemplates(p=>!p)} style={{ background:'none', border:'none', color:'var(--accent)', fontSize:12, fontWeight:600, cursor:'pointer' }}>
+                {showTemplates ? 'Gizle' : 'Göster'}
+              </button>
+            </div>
+            {showTemplates && (
+              <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                {GOAL_TEMPLATES.map((tpl,i) => (
+                  <button key={i} onClick={()=>{
+                    setName(tpl.name)
+                    setDays(String(tpl.days))
+                    setTaskList(tpl.tasks.map((t,j)=>({...t, _key:j})))
+                    setShowTemplates(false)
+                  }} style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 14px', background:'var(--surface2)', border:'1.5px solid var(--border)', borderRadius:'var(--r-md)', cursor:'pointer', textAlign:'left', width:'100%' }}>
+                    <span style={{ fontSize:20 }}>{tpl.icon}</span>
+                    <div>
+                      <div style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{tpl.name}</div>
+                      <div style={{ fontSize:11, color:'var(--text3)', marginTop:1 }}>{tpl.days} gün · {tpl.tasks.length} görev</div>
+                    </div>
+                  </button>
+                ))}
+                <div style={{ height:1, background:'var(--border)', margin:'4px 0' }} />
+                <button onClick={()=>setShowTemplates(false)} style={{ background:'none', border:'none', color:'var(--accent)', fontSize:13, fontWeight:600, cursor:'pointer', padding:'4px 0', textAlign:'left' }}>
+                  + Sıfırdan oluştur
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         <div style={{ marginBottom:14 }}>
           <div style={{ ...css.label, marginBottom:6 }}>Hedef Adı</div>
