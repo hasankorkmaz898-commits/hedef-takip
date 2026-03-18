@@ -252,6 +252,40 @@ export default function Home() {
     setShowModal(false); setEditGoal(null); await loadAll()
   }
 
+  async function shareGoal(goalId) {
+    const supabase = createClient()
+    const goal  = goals.find(g=>g.id===goalId)
+    const gtasks = tasks[goalId]||[]
+    if (!goal) return
+
+    // Mevcut şablon var mı kontrol et
+    const { data:existing } = await supabase
+      .from('shared_templates')
+      .select('id')
+      .eq('goal_id', goalId)
+      .single()
+
+    let templateId
+    if (existing) {
+      templateId = existing.id
+    } else {
+      const { data:t } = await supabase.from('shared_templates').insert({
+        goal_id:      goalId,
+        goal_name:    goal.name,
+        total_days:   goal.total_days,
+        tasks:        gtasks.map(t=>({ name:t.name, active_days:t.active_days||[] })),
+        creator_id:   user.id,
+        creator_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Kullanıcı',
+      }).select().single()
+      templateId = t?.id
+    }
+
+    if (!templateId) { alert('Paylaşım linki oluşturulamadı'); return }
+    const link = `${window.location.origin}/share/${templateId}`
+    await navigator.clipboard.writeText(link)
+    showToast('🔗 Link kopyalandı!')
+  }
+
   async function handleDeleteGoal(goalId) {
     if (!confirm('Bu hedef silinsin mi?')) return
     await supabase.from('goals').delete().eq('id',goalId); await loadAll()
@@ -372,6 +406,7 @@ export default function Home() {
               onEdit={() => { setEditGoal(goal); setShowModal(true) }}
               onDelete={() => handleDeleteGoal(goal.id)}
               onReorderTasks={(from,to) => reorderTasks(goal.id, from, to)}
+              onShare={() => shareGoal(goal.id)}
             />
           ))}
         </div>
@@ -493,7 +528,7 @@ function GoogleIcon() {
 }
 
 /* ─── Goal Card ──────────────────────────────────────────────────────────── */
-function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabChange, onToggleHist, onToggleTask, onSetQuality, onRemoveLog, onSaveNote, onNoteChange, onEdit, onDelete, isOpen, onToggleOpen, onReorderTasks }) {
+function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabChange, onToggleHist, onToggleTask, onSetQuality, onRemoveLog, onSaveNote, onNoteChange, onEdit, onDelete, isOpen, onToggleOpen, onReorderTasks, onShare }) {
   const today    = todayStr()
   const dragIdx     = useRef(null)
   const dragOverIdx = useRef(null)
@@ -571,6 +606,7 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
             <span style={{ fontSize:11, color:doneTodayCount===tasks.length&&tasks.length>0?'var(--good)':'var(--text3)' }}>{doneTodayCount}/{tasks.length}</span>
+            <button style={{ ...css.iconBtn, width:28, height:28, fontSize:13 }} onClick={e=>{e.stopPropagation();onShare()}} title="Paylaş">↗</button>
             <button style={{ ...css.iconBtn, width:28, height:28, fontSize:12 }} onClick={e=>{e.stopPropagation();onEdit()}}>✎</button>
             <button style={{ ...css.iconBtn, width:28, height:28, fontSize:12, color:'var(--bad)' }} onClick={e=>{e.stopPropagation();onDelete()}}>✕</button>
             <span style={{ fontSize:16, color:'var(--text3)', transform:isOpen?'rotate(180deg)':'none', display:'inline-block', transition:'transform 0.2s' }}>⌄</span>
