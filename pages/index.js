@@ -142,6 +142,8 @@ const css = {
 }
 
 /* ─── Main App ───────────────────────────────────────────────────────────── */
+const supabase = createClient() // singleton — component dışında
+
 export default function Home() {
   const [user,       setUser]       = useState(null)
   const [loading,    setLoading]    = useState(true)
@@ -161,8 +163,6 @@ export default function Home() {
   const [mainTab,    setMainTab]    = useState('personal')
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [expandedGoal,   setExpandedGoal]   = useState(null)
-
-  const supabase = createClient()
 
   /* Auth */
   useEffect(() => {
@@ -216,7 +216,6 @@ export default function Home() {
     // Optimistic update — UI anında güncellenir
     setTasks(p => ({...p, [goalId]: current}))
     // Supabase'e yaz
-    const supabase = createClient()
     await Promise.all(current.map((t, i) =>
       supabase.from('tasks').update({ order_index: i }).eq('id', t.id)
     ))
@@ -253,7 +252,6 @@ export default function Home() {
   }
 
   async function shareGoal(goalId) {
-    const supabase = createClient()
     const goal  = goals.find(g=>g.id===goalId)
     const gtasks = tasks[goalId]||[]
     if (!goal) return
@@ -669,7 +667,7 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
               <div className="anim-tab">
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
                   <span style={{ ...css.label }}>Bugünün Görevleri · {todayLogs.length}/{activeTasks(tasks,today).length}</span>
-                  <button onClick={async()=>{ for(const l of todayLogs) await createClient().from('daily_logs').delete().eq('id',l.id) }} style={{ background:'none', border:'none', fontSize:12, color:'var(--text3)', cursor:'pointer' }}>Sıfırla</button>
+                  <button onClick={async()=>{ for(const l of todayLogs) await supabase.from('daily_logs').delete().eq('id',l.id) }} style={{ background:'none', border:'none', fontSize:12, color:'var(--text3)', cursor:'pointer' }}>Sıfırla</button>
                 </div>
                 <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
                   {tasks.map((t,ti) => {
