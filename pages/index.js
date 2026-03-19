@@ -606,7 +606,9 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
             <span style={{ fontSize:11, color:doneTodayCount===tasks.length&&tasks.length>0?'var(--good)':'var(--text3)' }}>{doneTodayCount}/{tasks.length}</span>
-            <button style={{ ...css.iconBtn, width:28, height:28, fontSize:13 }} onClick={e=>{e.stopPropagation();onShare()}} title="Paylaş">↗</button>
+            <button style={{ ...css.iconBtn, width:28, height:28, display:'flex', alignItems:'center', justifyContent:'center' }} onClick={e=>{e.stopPropagation();onShare()}} title="Paylaş">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="13" cy="2.5" r="1.8" stroke="currentColor" strokeWidth="1.4"/><circle cx="13" cy="13.5" r="1.8" stroke="currentColor" strokeWidth="1.4"/><circle cx="3" cy="8" r="1.8" stroke="currentColor" strokeWidth="1.4"/><line x1="4.7" y1="7.1" x2="11.3" y2="3.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><line x1="4.7" y1="8.9" x2="11.3" y2="12.6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+            </button>
             <button style={{ ...css.iconBtn, width:28, height:28, fontSize:12 }} onClick={e=>{e.stopPropagation();onEdit()}}>✎</button>
             <button style={{ ...css.iconBtn, width:28, height:28, fontSize:12, color:'var(--bad)' }} onClick={e=>{e.stopPropagation();onDelete()}}>✕</button>
             <span style={{ fontSize:16, color:'var(--text3)', transform:isOpen?'rotate(180deg)':'none', display:'inline-block', transition:'transform 0.2s' }}>⌄</span>
@@ -926,6 +928,8 @@ function RiskMeter({ score }) {
 function AnalyticsPanel({ goals, tasks, logs }) {
   const DOW_TR = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
   const today  = todayStr()
+  const [expandedId, setExpandedId] = useState(null)
+  const [analyticTab, setAnalyticTab] = useState({}) // {goalId: 'overview'|'weekly'|'trend'|'tasks'}
 
   if (!goals.length) return (
     <div style={{ textAlign:'center', padding:'60px 24px', color:'var(--text3)' }}>
@@ -1109,141 +1113,178 @@ function AnalyticsPanel({ goals, tasks, logs }) {
         </div>
       )}
 
-      {/* Her hedef için detaylı analiz */}
-      {goalAnalytics.map(({ goal, op, riskScore, healthScore, healthLabel, healthColor, momentum, recentTrend, consistency, dowAvg, bestDow, worstDow, taskStats, fhAvg, shAvg, daySc, e, remaining, recoverable, neededPerDay, currentPerDay }) => (
-        <div key={goal.id} style={{ background:'var(--surface)', border:`1.5px solid ${riskScore>70?'rgba(248,113,113,0.3)':riskScore>40?'rgba(251,191,36,0.2)':'var(--border)'}`, borderRadius:20, marginBottom:14, overflow:'hidden' }}>
+      {/* Her hedef için accordion analiz kartları */}
+      {goalAnalytics.map(({ goal, op, riskScore, momentum, recentTrend, consistency, dowAvg, bestDow, worstDow, taskStats, fhAvg, shAvg, daySc, e, remaining, recoverable }) => {
+        const isOpen = expandedId === goal.id
+        const atab   = analyticTab[goal.id] || 'overview'
+        const riskColor = riskScore<=20?'var(--good)':riskScore<=40?'var(--accent)':riskScore<=60?'var(--mid)':riskScore<=80?'var(--fire)':'var(--bad)'
+        const riskLabel = riskScore<=20?'Mükemmel':riskScore<=40?'İyi':riskScore<=60?'Orta':riskScore<=80?'Zayıf':'Riskli'
+        return (
+          <div key={goal.id} style={{ background:'var(--surface)', border:`1.5px solid ${riskScore>70?'rgba(248,113,113,0.3)':riskScore>40?'rgba(251,191,36,0.2)':'var(--border)'}`, borderRadius:20, marginBottom:10, overflow:'hidden' }}>
 
-          {/* Başlık + Risk Metre */}
-          <div style={{ padding:'14px 16px 12px', borderBottom:'1.5px solid var(--border)' }}>
-            <div style={{ fontSize:14, fontWeight:700, color:'var(--text)', marginBottom:12 }}>{goal.name}</div>
-
-            {/* Risk metre — tam genişlik şerit */}
-            <div style={{ marginBottom:12 }}>
-              <RiskMeter score={riskScore} />
+            {/* Tıklanabilir başlık */}
+            <div onClick={()=>setExpandedId(isOpen?null:goal.id)} style={{ padding:'13px 16px', cursor:'pointer', userSelect:'none' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize:14, fontWeight:700, color:'var(--text)', marginBottom:6 }}>{goal.name}</div>
+                  {/* Mini risk şeridi */}
+                  <div style={{ height:4, background:'var(--surface2)', borderRadius:99, overflow:'hidden', marginBottom:5 }}>
+                    <div style={{ height:'100%', width:`${riskScore}%`, background:riskColor, borderRadius:99 }}/>
+                  </div>
+                  <div style={{ display:'flex', gap:10, fontSize:11, color:'var(--text3)' }}>
+                    <span>Risk <b style={{ color:riskColor }}>{riskLabel}</b></span>
+                    <span>İlerleme <b style={{ color:'var(--text)' }}>{op}%</b></span>
+                    <span>Tutarlılık <b style={{ color:consistency>=70?'var(--good)':consistency>=40?'var(--mid)':'var(--bad)' }}>{consistency}%</b></span>
+                  </div>
+                </div>
+                <span style={{ fontSize:16, color:'var(--text3)', transform:isOpen?'rotate(180deg)':'none', display:'inline-block', transition:'transform 0.2s', flexShrink:0 }}>⌄</span>
+              </div>
             </div>
 
-            {/* Metrikler */}
-            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                {/* İlerleme */}
-                <div>
-                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'var(--text3)', marginBottom:3 }}>
-                    <span>İlerleme</span><b style={{ color:'var(--text)' }}>{op}%</b>
-                  </div>
-                  <div style={{ height:5, background:'var(--surface2)', borderRadius:99, overflow:'hidden' }}>
-                    <div style={{ height:'100%', width:`${op}%`, background:op>=70?'var(--good)':op>=40?'var(--accent)':'var(--bad)', borderRadius:99 }}/>
-                  </div>
-                </div>
-                {/* Tutarlılık */}
-                <div>
-                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'var(--text3)', marginBottom:3 }}>
-                    <span>Tutarlılık</span><b style={{ color:consistency>=70?'var(--good)':consistency>=40?'var(--mid)':'var(--bad)' }}>{consistency}%</b>
-                  </div>
-                  <div style={{ height:5, background:'var(--surface2)', borderRadius:99, overflow:'hidden' }}>
-                    <div style={{ height:'100%', width:`${consistency}%`, background:consistency>=70?'var(--good)':consistency>=40?'var(--mid)':'var(--bad)', borderRadius:99 }}/>
-                  </div>
-                </div>
-              </div>
-              {/* Momentum */}
-              {momentum!==null && (
-                <div style={{ display:'flex', gap:16, fontSize:11, color:'var(--text3)' }}>
-                  <span>7 günlük trend <b style={{ color:momentum>=0?'var(--good)':'var(--bad)' }}>{momentum>=0?'+':''}{momentum}p</b></span>
-                  {recentTrend!==null && <span>Son 3 gün <b style={{ color:recentTrend>=0?'var(--good)':'var(--bad)' }}>{recentTrend>=0?'↑':'↓'}</b></span>}
-                </div>
-              )}
-              {/* Kurtarılabilirlik */}
-              {neededPerDay!==null && remaining>0 && (
-                <div style={{ background:recoverable?'rgba(74,222,128,0.08)':'rgba(248,113,113,0.08)', border:`1px solid ${recoverable?'rgba(74,222,128,0.2)':'rgba(248,113,113,0.2)'}`, borderRadius:10, padding:'7px 11px', fontSize:11, color:recoverable?'var(--good)':'var(--bad)', fontWeight:600 }}>
-                  {recoverable ? `✓ ${remaining} günde hedefe ulaşmak mümkün` : `✗ Mevcut tempoda ${remaining} günde yetişmek zor`}
-                </div>
-              )}
-            </div>
-          </div>
+            {/* Açılır detay */}
+            {isOpen && (
+              <div className="anim-expand" style={{ borderTop:'1.5px solid var(--border)' }}>
 
-          <div style={{ padding:'12px 16px' }}>
-
-            {/* Haftalık örüntü */}
-            {e>=7 && (
-              <div style={{ marginBottom:14 }}>
-                <div style={{ ...css.label, marginBottom:8 }}>Haftalık Örüntü</div>
-                <div style={{ display:'flex', gap:4, alignItems:'flex-end', height:56 }}>
-                  {DOW_TR.map((d,dow)=>{
-                    const v = dowAvg[dow]
-                    const h = v!==null ? Math.max(6, Math.round(v/100*44)) : 4
-                    const isBest  = dow===bestDow  && v!==null
-                    const isWorst = dow===worstDow && v!==null && v!==dowAvg[bestDow]
-                    const col = isBest?'var(--good)':isWorst?'var(--bad)':'var(--accent)'
-                    return (
-                      <div key={dow} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
-                        <div style={{ fontSize:9, color:isBest?'var(--good)':isWorst?'var(--bad)':'var(--text3)', fontWeight:700 }}>{v!==null?v+'%':''}</div>
-                        <div style={{ width:'100%', height:h, background:v!==null?col:'var(--surface2)', borderRadius:6, opacity:v!==null?0.85:0.3 }} />
-                        <div style={{ fontSize:10, color:isBest?'var(--good)':isWorst?'var(--bad)':'var(--text3)', fontWeight:isBest||isWorst?700:500 }}>{d}</div>
-                      </div>
-                    )
-                  })}
-                </div>
-                {dowAvg[bestDow]!==null && (
-                  <div style={{ fontSize:11, color:'var(--text3)', marginTop:6 }}>
-                    <span style={{ color:'var(--good)', fontWeight:600 }}>En güçlü: {DOW_TR[bestDow]}</span>
-                    {dowAvg[worstDow]!==null && worstDow!==bestDow && <span style={{ color:'var(--bad)', fontWeight:600, marginLeft:10 }}>En zayıf: {DOW_TR[worstDow]}</span>}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Kalite trendi */}
-            {fhAvg!==null && shAvg!==null && e>=6 && (
-              <div style={{ background:'var(--surface2)', borderRadius:14, padding:'11px 13px', marginBottom:14 }}>
-                <div style={{ ...css.label, marginBottom:8 }}>İlk Yarı vs Son Yarı</div>
-                <div style={{ display:'flex', gap:10, alignItems:'center' }}>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontSize:11, color:'var(--text3)', marginBottom:3 }}>İlk {Math.floor(e/2)} gün</div>
-                    <div style={{ height:7, background:'var(--surface)', borderRadius:99, overflow:'hidden', marginBottom:3 }}>
-                      <div style={{ height:'100%', width:`${fhAvg}%`, background:'var(--accent)', borderRadius:99, opacity:.7 }} />
-                    </div>
-                    <div style={{ fontSize:13, fontWeight:700, color:'var(--accent)' }}>{fhAvg}%</div>
-                  </div>
-                  <div style={{ fontSize:18, color: shAvg>=fhAvg?'var(--good)':'var(--bad)', fontWeight:800 }}>{shAvg>=fhAvg?'↑':'↓'}</div>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontSize:11, color:'var(--text3)', marginBottom:3 }}>Son {e-Math.floor(e/2)} gün</div>
-                    <div style={{ height:7, background:'var(--surface)', borderRadius:99, overflow:'hidden', marginBottom:3 }}>
-                      <div style={{ height:'100%', width:`${shAvg}%`, background:shAvg>=fhAvg?'var(--good)':'var(--bad)', borderRadius:99, opacity:.8 }} />
-                    </div>
-                    <div style={{ fontSize:13, fontWeight:700, color:shAvg>=fhAvg?'var(--good)':'var(--bad)' }}>{shAvg}%</div>
-                  </div>
-                </div>
-                <div style={{ fontSize:11, color:'var(--text3)', marginTop:6 }}>
-                  {shAvg>fhAvg ? `📈 ${shAvg-fhAvg} puan gelişim — giderek daha iyi gidiyorsun` :
-                   shAvg<fhAvg ? `📉 ${fhAvg-shAvg} puan düşüş — başlangıca göre tempo yavaşladı` :
-                   '➡️ Sabit bir tempo tutturmuşsun'}
-                </div>
-              </div>
-            )}
-
-            {/* Görev bazlı başarı */}
-            {taskStats.length>0 && (
-              <div>
-                <div style={{ ...css.label, marginBottom:8 }}>Görev Başarı Oranları</div>
-                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                  {taskStats.map(t=>(
-                    <div key={t.id}>
-                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:3 }}>
-                        <span style={{ fontSize:12, color:'var(--text2)', flex:1, marginRight:8 }}>{t.name}</span>
-                        <span style={{ fontSize:12, fontWeight:700, color:t.rate>=70?'var(--good)':t.rate>=40?'var(--mid)':'var(--bad)', minWidth:32, textAlign:'right' }}>{t.rate}%</span>
-                        {t.qAvg>0 && <span style={{ fontSize:10, color:'var(--text3)', marginLeft:8, minWidth:48 }}>kalite {t.qAvg}%</span>}
-                      </div>
-                      <div style={{ height:5, background:'var(--surface2)', borderRadius:99, overflow:'hidden' }}>
-                        <div style={{ height:'100%', width:`${t.rate}%`, background:t.rate>=70?'var(--good)':t.rate>=40?'var(--mid)':'var(--bad)', borderRadius:99 }} />
-                      </div>
-                    </div>
+                {/* Sekmeler */}
+                <div style={{ display:'flex', background:'var(--surface2)', borderRadius:'var(--r-md)', padding:3, margin:'12px 16px 0' }}>
+                  {[['overview','Özet'],['weekly','Haftalık'],['trend','Trend'],['tasks','Görevler']].map(([t,l])=>(
+                    <button key={t} style={css.tab(atab===t)} onClick={()=>setAnalyticTab(p=>({...p,[goal.id]:t}))}>{l}</button>
                   ))}
                 </div>
+
+                <div style={{ padding:'12px 16px 16px' }}>
+
+                  {/* ÖZET */}
+                  {atab==='overview' && (
+                    <div className="anim-tab">
+                      <div style={{ marginBottom:14 }}>
+                        <RiskMeter score={riskScore} />
+                      </div>
+                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:10 }}>
+                        <div>
+                          <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'var(--text3)', marginBottom:3 }}>
+                            <span>İlerleme</span><b style={{ color:'var(--text)' }}>{op}%</b>
+                          </div>
+                          <div style={{ height:5, background:'var(--surface2)', borderRadius:99, overflow:'hidden' }}>
+                            <div style={{ height:'100%', width:`${op}%`, background:op>=70?'var(--good)':op>=40?'var(--accent)':'var(--bad)', borderRadius:99 }}/>
+                          </div>
+                        </div>
+                        <div>
+                          <div style={{ display:'flex', justifyContent:'space-between', fontSize:11, color:'var(--text3)', marginBottom:3 }}>
+                            <span>Tutarlılık</span><b style={{ color:consistency>=70?'var(--good)':consistency>=40?'var(--mid)':'var(--bad)' }}>{consistency}%</b>
+                          </div>
+                          <div style={{ height:5, background:'var(--surface2)', borderRadius:99, overflow:'hidden' }}>
+                            <div style={{ height:'100%', width:`${consistency}%`, background:consistency>=70?'var(--good)':consistency>=40?'var(--mid)':'var(--bad)', borderRadius:99 }}/>
+                          </div>
+                        </div>
+                      </div>
+                      {momentum!==null && (
+                        <div style={{ display:'flex', gap:16, fontSize:11, color:'var(--text3)', marginBottom:8 }}>
+                          <span>7 günlük trend <b style={{ color:momentum>=0?'var(--good)':'var(--bad)' }}>{momentum>=0?'+':''}{momentum}p</b></span>
+                          {recentTrend!==null && <span>Son 3 gün <b style={{ color:recentTrend>=0?'var(--good)':'var(--bad)' }}>{recentTrend>=0?'↑':'↓'}</b></span>}
+                        </div>
+                      )}
+                      {remaining>0 && (
+                        <div style={{ background:recoverable?'rgba(74,222,128,0.08)':'rgba(248,113,113,0.08)', border:`1px solid ${recoverable?'rgba(74,222,128,0.2)':'rgba(248,113,113,0.2)'}`, borderRadius:10, padding:'7px 11px', fontSize:11, color:recoverable?'var(--good)':'var(--bad)', fontWeight:600 }}>
+                          {recoverable?`✓ ${remaining} günde hedefe ulaşmak mümkün`:`✗ Mevcut tempoda ${remaining} günde yetişmek zor`}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* HAFTALIK */}
+                  {atab==='weekly' && (
+                    <div className="anim-tab">
+                      {e<7 ? (
+                        <div style={{ textAlign:'center', padding:'20px 0', color:'var(--text3)', fontSize:13 }}>En az 7 gün geçmesi gerekiyor</div>
+                      ) : (
+                        <>
+                          <div style={{ ...css.label, marginBottom:8 }}>Gün Bazlı Ortalama</div>
+                          <div style={{ display:'flex', gap:4, alignItems:'flex-end', height:64, marginBottom:6 }}>
+                            {DOW_TR.map((d,dow)=>{
+                              const v = dowAvg[dow]
+                              const h = v!==null ? Math.max(6, Math.round(v/100*50)) : 4
+                              const isBest  = dow===bestDow  && v!==null
+                              const isWorst = dow===worstDow && v!==null && v!==dowAvg[bestDow]
+                              const col = isBest?'var(--good)':isWorst?'var(--bad)':'var(--accent)'
+                              return (
+                                <div key={dow} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
+                                  <div style={{ fontSize:9, color:isBest?'var(--good)':isWorst?'var(--bad)':'var(--text3)', fontWeight:700 }}>{v!==null?v+'%':''}</div>
+                                  <div style={{ width:'100%', height:h, background:v!==null?col:'var(--surface2)', borderRadius:6, opacity:v!==null?0.85:0.3 }} />
+                                  <div style={{ fontSize:10, color:isBest?'var(--good)':isWorst?'var(--bad)':'var(--text3)', fontWeight:isBest||isWorst?700:500 }}>{d}</div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                          <div style={{ fontSize:11, color:'var(--text3)' }}>
+                            {dowAvg[bestDow]!==null && <span style={{ color:'var(--good)', fontWeight:600 }}>En güçlü: {DOW_TR[bestDow]}</span>}
+                            {dowAvg[worstDow]!==null && worstDow!==bestDow && <span style={{ color:'var(--bad)', fontWeight:600, marginLeft:10 }}>En zayıf: {DOW_TR[worstDow]}</span>}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* TREND */}
+                  {atab==='trend' && (
+                    <div className="anim-tab">
+                      {fhAvg===null||shAvg===null||e<6 ? (
+                        <div style={{ textAlign:'center', padding:'20px 0', color:'var(--text3)', fontSize:13 }}>Yeterli veri yok</div>
+                      ) : (
+                        <div style={{ background:'var(--surface2)', borderRadius:14, padding:'12px 14px' }}>
+                          <div style={{ ...css.label, marginBottom:10 }}>İlk Yarı vs Son Yarı</div>
+                          <div style={{ display:'flex', gap:12, alignItems:'center', marginBottom:10 }}>
+                            <div style={{ flex:1 }}>
+                              <div style={{ fontSize:11, color:'var(--text3)', marginBottom:3 }}>İlk {Math.floor(e/2)} gün</div>
+                              <div style={{ height:7, background:'var(--surface)', borderRadius:99, overflow:'hidden', marginBottom:3 }}>
+                                <div style={{ height:'100%', width:`${fhAvg}%`, background:'var(--accent)', borderRadius:99, opacity:.7 }} />
+                              </div>
+                              <div style={{ fontSize:14, fontWeight:700, color:'var(--accent)' }}>{fhAvg}%</div>
+                            </div>
+                            <div style={{ fontSize:22, color:shAvg>=fhAvg?'var(--good)':'var(--bad)', fontWeight:800 }}>{shAvg>=fhAvg?'↑':'↓'}</div>
+                            <div style={{ flex:1 }}>
+                              <div style={{ fontSize:11, color:'var(--text3)', marginBottom:3 }}>Son {e-Math.floor(e/2)} gün</div>
+                              <div style={{ height:7, background:'var(--surface)', borderRadius:99, overflow:'hidden', marginBottom:3 }}>
+                                <div style={{ height:'100%', width:`${shAvg}%`, background:shAvg>=fhAvg?'var(--good)':'var(--bad)', borderRadius:99, opacity:.8 }} />
+                              </div>
+                              <div style={{ fontSize:14, fontWeight:700, color:shAvg>=fhAvg?'var(--good)':'var(--bad)' }}>{shAvg}%</div>
+                            </div>
+                          </div>
+                          <div style={{ fontSize:12, color:'var(--text3)' }}>
+                            {shAvg>fhAvg?`📈 ${shAvg-fhAvg} puan gelişim — giderek daha iyi`:shAvg<fhAvg?`📉 ${fhAvg-shAvg} puan düşüş — tempo yavaşladı`:'➡️ Sabit tempo'}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* GÖREVLER */}
+                  {atab==='tasks' && (
+                    <div className="anim-tab">
+                      <div style={{ ...css.label, marginBottom:10 }}>Görev Başarı Oranları</div>
+                      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                        {taskStats.map(t=>(
+                          <div key={t.id}>
+                            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:3 }}>
+                              <span style={{ fontSize:12, color:'var(--text2)', flex:1, marginRight:8 }}>{t.name}</span>
+                              <span style={{ fontSize:12, fontWeight:700, color:t.rate>=70?'var(--good)':t.rate>=40?'var(--mid)':'var(--bad)', minWidth:32, textAlign:'right' }}>{t.rate}%</span>
+                              {t.qAvg>0 && <span style={{ fontSize:10, color:'var(--text3)', marginLeft:8 }}>kalite {t.qAvg}%</span>}
+                            </div>
+                            <div style={{ height:5, background:'var(--surface2)', borderRadius:99, overflow:'hidden' }}>
+                              <div style={{ height:'100%', width:`${t.rate}%`, background:t.rate>=70?'var(--good)':t.rate>=40?'var(--mid)':'var(--bad)', borderRadius:99 }} />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                </div>
               </div>
             )}
-
           </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
