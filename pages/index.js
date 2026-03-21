@@ -29,6 +29,11 @@ const daysElapsed= s   => Math.max(0, Math.floor((new Date()-new Date(s))/864000
 const daysLeft   = (s,t) => Math.max(0, t-daysElapsed(s))
 
 function taskActiveOnDay(task, ds) {
+  // Sonlandırılmış görev — ended_at tarihinden sonra aktif değil
+  if (task.ended_at && ds > task.ended_at) return false
+  // Bugün için atlanmış — skipped_dates dizisinde varsa aktif değil
+  if (task.skipped_dates?.includes(ds)) return false
+  // Haftalık gün filtresi
   if (!task.active_days || task.active_days.length === 0) return true
   const dow = new Date(ds + 'T00:00:00').getDay()
   return task.active_days.includes(dow)
@@ -36,6 +41,13 @@ function taskActiveOnDay(task, ds) {
 
 function activeTasks(tasks, ds) {
   return tasks.filter(t => taskActiveOnDay(t, ds))
+}
+
+function taskStatus(task, ds) {
+  if (task.ended_at && ds >= task.ended_at) return 'ended'
+  if (task.skipped_dates?.includes(ds)) return 'skipped'
+  if (!taskActiveOnDay(task, ds)) return 'inactive'
+  return 'active'
 }
 
 function dayScore(tasks, logs, ds) {
@@ -311,6 +323,35 @@ export default function Home() {
     await reloadLogs(goalId)
   }
 
+  async function skipTaskToday(goalId, taskId) {
+    const today = todayStr()
+    const t = (tasks[goalId]||[]).find(x=>x.id===taskId)
+    if (!t) return
+    const skipped = [...(t.skipped_dates||[]), today]
+    await supabase.from('tasks').update({ skipped_dates: skipped }).eq('id', taskId)
+    setTasks(p=>({...p,[goalId]:p[goalId].map(x=>x.id===taskId?{...x,skipped_dates:skipped}:x)}))
+  }
+
+  async function unskipTask(goalId, taskId) {
+    const today = todayStr()
+    const t = (tasks[goalId]||[]).find(x=>x.id===taskId)
+    if (!t) return
+    const skipped = (t.skipped_dates||[]).filter(d=>d!==today)
+    await supabase.from('tasks').update({ skipped_dates: skipped }).eq('id', taskId)
+    setTasks(p=>({...p,[goalId]:p[goalId].map(x=>x.id===taskId?{...x,skipped_dates:skipped}:x)}))
+  }
+
+  async function endTask(goalId, taskId) {
+    const today = todayStr()
+    await supabase.from('tasks').update({ ended_at: today }).eq('id', taskId)
+    setTasks(p=>({...p,[goalId]:p[goalId].map(x=>x.id===taskId?{...x,ended_at:today}:x)}))
+  }
+
+  async function restoreTask(goalId, taskId) {
+    await supabase.from('tasks').update({ ended_at: null }).eq('id', taskId)
+    setTasks(p=>({...p,[goalId]:p[goalId].map(x=>x.id===taskId?{...x,ended_at:null}:x)}))
+  }
+
   async function reloadLogs(goalId) {
     const { data:l } = await supabase.from('daily_logs').select('*').in('task_id',(tasks[goalId]||[]).map(x=>x.id))
     setLogs(p=>({...p,[goalId]:l||[]}))
@@ -405,6 +446,10 @@ export default function Home() {
               onDelete={() => handleDeleteGoal(goal.id)}
               onReorderTasks={(from,to) => reorderTasks(goal.id, from, to)}
               onShare={() => shareGoal(goal.id)}
+              onSkipTask={tid => skipTaskToday(goal.id, tid)}
+              onUnskipTask={tid => unskipTask(goal.id, tid)}
+              onEndTask={tid => endTask(goal.id, tid)}
+              onRestoreTask={tid => restoreTask(goal.id, tid)}
             />
           ))}
         </div>
@@ -526,7 +571,7 @@ function GoogleIcon() {
 }
 
 /* ─── Goal Card ──────────────────────────────────────────────────────────── */
-function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabChange, onToggleHist, onToggleTask, onSetQuality, onRemoveLog, onSaveNote, onNoteChange, onEdit, onDelete, isOpen, onToggleOpen, onReorderTasks, onShare }) {
+function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabChange, onToggleHist, onToggleTask, onSetQuality, onRemoveLog, onSaveNote, onNoteChange, onEdit, onDelete, isOpen, onToggleOpen, onReorderTasks, onShare, onSkipTask, onUnskipTask, onEndTask, onRestoreTask }) {
   const today    = todayStr()
   const dragIdx     = useRef(null)
   const dragOverIdx = useRef(null)
@@ -671,41 +716,66 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                 </div>
                 <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:16 }}>
                   {tasks.map((t,ti) => {
-                    const isActive = taskActiveOnDay(t, today)
+                    const tStatus  = taskStatus(t, today)
+                    const isActive = tStatus === 'active'
+                    const isSkipped= tStatus === 'skipped'
+                    const isEnded  = tStatus === 'ended'
                     const log = todayLogs.find(l=>l.task_id===t.id)
                     const q   = log?.quality
-                    const qBg = { good:'var(--good-bg)', mid:'var(--mid-bg)', bad:'var(--bad-bg)' }
-                    const qBorder = { good:'rgba(74,222,128,0.3)', mid:'rgba(251,191,36,0.3)', bad:'rgba(248,113,113,0.3)' }
-                    const DOW_TR = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
-                    const activeDayLabels = t.active_days?.length ? t.active_days.map(d=>DOW_TR[d]).join(' · ') : null
+                    const qBg    = { good:'var(--good-bg)', mid:'var(--mid-bg)', bad:'var(--bad-bg)' }
+                    const qBorder= { good:'rgba(74,222,128,0.3)', mid:'rgba(251,191,36,0.3)', bad:'rgba(248,113,113,0.3)' }
+                    const DOW_LABELS = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
+                    const activeDayLabels = t.active_days?.length ? t.active_days.map(d=>DOW_LABELS[d]).join(' · ') : null
+
+                    // Kart arka planı ve border'ı duruma göre
+                    const cardBg     = isEnded?'transparent':isSkipped?'rgba(251,191,36,0.04)':q?qBg[q]:'var(--surface2)'
+                    const cardBorder = isEnded?'var(--border)':isSkipped?'rgba(251,191,36,0.25)':q?qBorder[q]:'var(--border)'
+                    const cardOpacity= isEnded?0.4:isSkipped?0.6:1
+
                     return (
                       <div
                         key={t.id}
-                        draggable
-                        onDragStart={()=>handleDragStart(ti)}
+                        draggable={!isEnded}
+                        onDragStart={()=>!isEnded&&handleDragStart(ti)}
                         onDragEnter={()=>handleDragEnter(ti)}
                         onDragEnd={handleDragEnd}
                         onDragOver={e=>e.preventDefault()}
-                        style={{ background:!isActive?'transparent':q?qBg[q]:'var(--surface2)', border:`1.5px solid ${!isActive?'var(--border)':q?qBorder[q]:'var(--border)'}`, borderRadius:'var(--r-md)', overflow:'hidden', opacity:isActive?1:0.45, transition:'transform 0.15s, opacity 0.15s' }}
+                        style={{ background:cardBg, border:`1.5px solid ${cardBorder}`, borderRadius:'var(--r-md)', overflow:'hidden', opacity:cardOpacity, transition:'opacity 0.2s' }}
                       >
-                        <div style={{ display:'flex', alignItems:'center', gap:8, padding:'12px 14px' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:8, padding:'11px 12px' }}>
                           {/* Sürükleme tutamacı */}
-                          <div
-                            style={{ color:'var(--text3)', fontSize:15, cursor:'grab', flexShrink:0, userSelect:'none', lineHeight:1, paddingRight:4 }}
-                            title="Sürükle"
-                          >⠿</div>
-                          <div style={{ display:'flex', alignItems:'center', gap:12, flex:1, cursor:isActive?'pointer':'default' }} onClick={()=>isActive&&onToggleTask(t.id)}>
-                            <div style={{ width:22, height:22, borderRadius:6, border:`2px solid ${q?`var(--${q})`:isActive?'var(--border2)':'var(--border)'}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, flexShrink:0, background:q?qBg[q]:'transparent', color:`var(--${q||'text3'})`, fontWeight:700 }}>{q ? QSym[q] : ''}</div>
-                            <div style={{ flex:1 }}>
-                              <div style={{ fontSize:14, textDecoration:q?'line-through':'none', color:q?'var(--text3)':isActive?'var(--text)':'var(--text3)' }}>{t.name}</div>
-                              {!isActive && activeDayLabels && <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>{activeDayLabels}</div>}
+                          {!isEnded && (
+                            <div style={{ color:'var(--text3)', fontSize:15, cursor:'grab', flexShrink:0, userSelect:'none', lineHeight:1 }} title="Sürükle">⠿</div>
+                          )}
+
+                          {/* Checkbox + isim */}
+                          <div style={{ display:'flex', alignItems:'center', gap:10, flex:1, cursor:isActive?'pointer':'default' }} onClick={()=>isActive&&onToggleTask(t.id)}>
+                            <div style={{ width:22, height:22, borderRadius:6, border:`2px solid ${q?`var(--${q})`:isActive?'var(--border2)':'var(--border)'}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, flexShrink:0, background:q?qBg[q]:'transparent', color:`var(--${q||'text3'})`, fontWeight:700 }}>
+                              {isEnded?'■':isSkipped?'–':q?QSym[q]:''}
                             </div>
-                            {q && isActive && <span style={{ fontSize:11, fontWeight:700, color:`var(--${q})`, background:qBg[q], padding:'2px 8px', borderRadius:99 }}>{QLabel[q]}</span>}
-                            {!isActive && <span style={{ fontSize:10, color:'var(--text3)', background:'var(--surface2)', padding:'2px 8px', borderRadius:99 }}>bugün yok</span>}
+                            <div style={{ flex:1 }}>
+                              <div style={{ fontSize:13, fontWeight:500, textDecoration:(q||isEnded)?'line-through':'none', color:q||isSkipped||isEnded?'var(--text3)':'var(--text)' }}>{t.name}</div>
+                              {isEnded && <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>Sonlandırıldı · {t.ended_at}</div>}
+                              {isSkipped && <div style={{ fontSize:10, color:'var(--mid)', marginTop:2 }}>Bugün atlandı</div>}
+                              {!isActive && !isSkipped && !isEnded && activeDayLabels && <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>{activeDayLabels}</div>}
+                            </div>
+                            {q && isActive && <span style={{ fontSize:11, fontWeight:700, color:`var(--${q})`, background:qBg[q], padding:'2px 7px', borderRadius:99 }}>{QLabel[q]}</span>}
                           </div>
+
+                          {/* Durum etiketi + aksiyon menüsü */}
+                          <TaskMenu
+                            taskId={t.id}
+                            status={tStatus}
+                            onSkip={()=>onSkipTask(t.id)}
+                            onUnskip={()=>onUnskipTask(t.id)}
+                            onEnd={()=>{ if(confirm(`"${t.name}" görevi sonlandırılsın mı? Geçmiş kayıtlar korunur.`)) onEndTask(t.id) }}
+                            onRestore={()=>onRestoreTask(t.id)}
+                          />
                         </div>
+
+                        {/* Kalite seçici */}
                         {q && isActive && (
-                          <div style={{ display:'flex', gap:6, padding:'0 14px 12px' }}>
+                          <div style={{ display:'flex', gap:6, padding:'0 12px 11px' }}>
                             {['good','mid','bad'].map(qv => (
                               <button key={qv} onClick={()=>onSetQuality(t.id,qv)} style={{ flex:1, padding:'7px 4px', borderRadius:'var(--r-md)', border:`1.5px solid ${q===qv?`var(--${qv})`:'var(--border)'}`, background:q===qv?qBg[qv]:'transparent', color:q===qv?`var(--${qv})`:'var(--text3)', fontSize:12, fontWeight:700, cursor:'pointer' }}>{QLabel[qv]}</button>
                             ))}
@@ -1415,6 +1485,73 @@ function HeatmapCalendar({ tasks, logs, startDate, totalDays }) {
       </div>
     </div>
   )
+}
+
+
+/* ─── Task Menu ──────────────────────────────────────────────────────────── */
+function TaskMenu({ taskId, status, onSkip, onUnskip, onEnd, onRestore }) {
+  const [open, setOpen] = useState(false)
+
+  const isActive  = status === 'active'
+  const isSkipped = status === 'skipped'
+  const isEnded   = status === 'ended'
+  const isInactive= status === 'inactive'
+
+  // Menü dışına tıklanınca kapat
+  useEffect(() => {
+    if (!open) return
+    const close = () => setOpen(false)
+    setTimeout(() => document.addEventListener('click', close), 0)
+    return () => document.removeEventListener('click', close)
+  }, [open])
+
+  return (
+    <div style={{ position:'relative', flexShrink:0 }} onClick={e=>e.stopPropagation()}>
+      <button
+        onClick={()=>setOpen(p=>!p)}
+        style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', padding:'2px 6px', borderRadius:6, display:'flex', alignItems:'center', gap:2, fontSize:16, lineHeight:1 }}
+        title="Seçenekler"
+      >
+        <span style={{ display:'block', width:3, height:3, borderRadius:'50%', background:'currentColor' }}/>
+        <span style={{ display:'block', width:3, height:3, borderRadius:'50%', background:'currentColor' }}/>
+        <span style={{ display:'block', width:3, height:3, borderRadius:'50%', background:'currentColor' }}/>
+      </button>
+
+      {open && (
+        <div style={{ position:'absolute', right:0, top:'calc(100% + 6px)', background:'var(--surface)', border:'1.5px solid var(--border)', borderRadius:14, padding:6, zIndex:100, minWidth:170, boxShadow:'0 8px 24px rgba(0,0,0,0.3)' }}>
+          {(isActive || isInactive) && (
+            <button onClick={()=>{setOpen(false);onSkip()}} style={menuBtn}>
+              <span style={{ fontSize:14 }}>⏭</span> Bugün atla
+            </button>
+          )}
+          {isSkipped && (
+            <button onClick={()=>{setOpen(false);onUnskip()}} style={menuBtn}>
+              <span style={{ fontSize:14 }}>↩</span> Atlamayı geri al
+            </button>
+          )}
+          {!isEnded && (
+            <>
+              <div style={{ height:1, background:'var(--border)', margin:'4px 0' }}/>
+              <button onClick={()=>{setOpen(false);onEnd()}} style={{ ...menuBtn, color:'var(--bad)' }}>
+                <span style={{ fontSize:14 }}>⏹</span> Görevi sonlandır
+              </button>
+            </>
+          )}
+          {isEnded && (
+            <button onClick={()=>{setOpen(false);onRestore()}} style={{ ...menuBtn, color:'var(--good)' }}>
+              <span style={{ fontSize:14 }}>▶</span> Görevi geri al
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const menuBtn = {
+  display:'flex', alignItems:'center', gap:8, width:'100%', padding:'8px 10px',
+  background:'none', border:'none', borderRadius:9, color:'var(--text2)', fontSize:13,
+  fontWeight:500, cursor:'pointer', fontFamily:'inherit', textAlign:'left'
 }
 
 /* ─── Goal Modal ─────────────────────────────────────────────────────────── */
