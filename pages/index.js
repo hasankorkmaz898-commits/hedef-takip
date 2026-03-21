@@ -29,6 +29,11 @@ const daysElapsed= s   => Math.max(0, Math.floor((new Date()-new Date(s))/864000
 const daysLeft   = (s,t) => Math.max(0, t-daysElapsed(s))
 
 function taskActiveOnDay(task, ds) {
+  // Görev oluşturulmadan önceki günlerde aktif değil
+  if (task.created_at) {
+    const taskDate = task.created_at.slice(0,10)
+    if (ds < taskDate) return false
+  }
   // Sonlandırılmış görev — ended_at tarihinden sonra aktif değil
   if (task.ended_at && ds > task.ended_at) return false
   // Bugün için atlanmış — skipped_dates dizisinde varsa aktif değil
@@ -740,7 +745,7 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                         onDragEnter={()=>handleDragEnter(ti)}
                         onDragEnd={handleDragEnd}
                         onDragOver={e=>e.preventDefault()}
-                        style={{ background:cardBg, border:`1.5px solid ${cardBorder}`, borderRadius:'var(--r-md)', overflow:'hidden', opacity:cardOpacity, transition:'opacity 0.2s' }}
+                        style={{ background:cardBg, border:`1.5px solid ${cardBorder}`, borderRadius:'var(--r-md)', opacity:cardOpacity, transition:'opacity 0.2s', position:'relative' }}
                       >
                         <div style={{ display:'flex', alignItems:'center', gap:8, padding:'11px 12px' }}>
                           {/* Sürükleme tutamacı */}
@@ -1491,13 +1496,29 @@ function HeatmapCalendar({ tasks, logs, startDate, totalDays }) {
 /* ─── Task Menu ──────────────────────────────────────────────────────────── */
 function TaskMenu({ taskId, status, onSkip, onUnskip, onEnd, onRestore }) {
   const [open, setOpen] = useState(false)
+  const [pos,  setPos]  = useState({ top:0, right:0 })
+  const btnRef = useRef(null)
 
   const isActive  = status === 'active'
   const isSkipped = status === 'skipped'
   const isEnded   = status === 'ended'
   const isInactive= status === 'inactive'
 
-  // Menü dışına tıklanınca kapat
+  function handleOpen() {
+    if (!open && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      // Ekranın altına taşacak mı? Yoksa aşağı, evet ise yukarı aç
+      const spaceBelow = window.innerHeight - r.bottom
+      const menuH = 130
+      if (spaceBelow < menuH) {
+        setPos({ bottom: window.innerHeight - r.top + 4, top:'auto', right: window.innerWidth - r.right })
+      } else {
+        setPos({ top: r.bottom + 4, bottom:'auto', right: window.innerWidth - r.right })
+      }
+    }
+    setOpen(p=>!p)
+  }
+
   useEffect(() => {
     if (!open) return
     const close = () => setOpen(false)
@@ -1508,8 +1529,9 @@ function TaskMenu({ taskId, status, onSkip, onUnskip, onEnd, onRestore }) {
   return (
     <div style={{ position:'relative', flexShrink:0 }} onClick={e=>e.stopPropagation()}>
       <button
-        onClick={()=>setOpen(p=>!p)}
-        style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', padding:'2px 6px', borderRadius:6, display:'flex', alignItems:'center', gap:2, fontSize:16, lineHeight:1 }}
+        ref={btnRef}
+        onClick={handleOpen}
+        style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', padding:'4px 6px', borderRadius:6, display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}
         title="Seçenekler"
       >
         <span style={{ display:'block', width:3, height:3, borderRadius:'50%', background:'currentColor' }}/>
@@ -1518,28 +1540,28 @@ function TaskMenu({ taskId, status, onSkip, onUnskip, onEnd, onRestore }) {
       </button>
 
       {open && (
-        <div style={{ position:'absolute', right:0, top:'calc(100% + 6px)', background:'var(--surface)', border:'1.5px solid var(--border)', borderRadius:14, padding:6, zIndex:100, minWidth:170, boxShadow:'0 8px 24px rgba(0,0,0,0.3)' }}>
+        <div style={{ position:'fixed', top:pos.top, bottom:pos.bottom, right:pos.right, background:'var(--surface)', border:'1.5px solid var(--border)', borderRadius:14, padding:6, zIndex:9999, minWidth:190, boxShadow:'0 8px 32px rgba(0,0,0,0.5)' }}>
           {(isActive || isInactive) && (
             <button onClick={()=>{setOpen(false);onSkip()}} style={menuBtn}>
-              <span style={{ fontSize:14 }}>⏭</span> Bugün atla
+              <span style={{ fontSize:15 }}>⏭</span> Bugün atla
             </button>
           )}
           {isSkipped && (
             <button onClick={()=>{setOpen(false);onUnskip()}} style={menuBtn}>
-              <span style={{ fontSize:14 }}>↩</span> Atlamayı geri al
+              <span style={{ fontSize:15 }}>↩</span> Atlamayı geri al
             </button>
           )}
           {!isEnded && (
             <>
               <div style={{ height:1, background:'var(--border)', margin:'4px 0' }}/>
               <button onClick={()=>{setOpen(false);onEnd()}} style={{ ...menuBtn, color:'var(--bad)' }}>
-                <span style={{ fontSize:14 }}>⏹</span> Görevi sonlandır
+                <span style={{ fontSize:15 }}>⏹</span> Görevi sonlandır
               </button>
             </>
           )}
           {isEnded && (
             <button onClick={()=>{setOpen(false);onRestore()}} style={{ ...menuBtn, color:'var(--good)' }}>
-              <span style={{ fontSize:14 }}>▶</span> Görevi geri al
+              <span style={{ fontSize:15 }}>▶</span> Görevi geri al
             </button>
           )}
         </div>
