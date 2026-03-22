@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { createClient } from '../lib/supabase'
 
 const DOW_TR   = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
@@ -66,28 +66,20 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
   const [planName,  setPlanName]  = useState('')
   const [weekCount, setWkCount]   = useState(4)
   const [bufferDay, setBufferDay] = useState(null)
-  // weeks sadece yapısal bilgiyi tutar (enabled/tasks count)
-  // gerçek task metinleri inputRefs'te
   const [weeks,     setWeeks]     = useState(() => buildWeeks(4))
   const [activeWk,  setActiveWk]  = useState(0)
   const [saving,    setSaving]    = useState(false)
-
-  // Her input için ref tut: key = `${wi}-${dow}-${ti}`, weekname = `wkname-${wi}`
   const inputRefs = useRef({})
+  const supabase  = createClient()
 
-  const supabase = createClient()
-
-  // Hafta değişince o haftanın input değerlerini ref'lerden oku ve weeks'e yaz
   function flushCurrentWeek() {
     const wi = activeWk
-    const nameEl = inputRefs.current[`wkname-${wi}`]
-    if (nameEl) {
-      setWeeks(p => p.map((w,i) => i===wi ? {...w, name: nameEl.value||w.name} : w))
-    }
     setWeeks(p => p.map((w,i) => {
       if (i !== wi) return w
+      const nameEl = inputRefs.current[`wkname-${wi}`]
       return {
         ...w,
+        name: nameEl ? (nameEl.value || w.name) : w.name,
         days: w.days.map(d => ({
           ...d,
           tasks: d.tasks.map((t,ti) => {
@@ -138,26 +130,21 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
 
   function toggleDay(wi, dow) {
     setWeeks(p => p.map((w,i) => i!==wi ? w : {
-      ...w,
-      days: w.days.map(d => d.dow===dow ? {...d, enabled:!d.enabled} : d)
+      ...w, days: w.days.map(d => d.dow===dow ? {...d,enabled:!d.enabled} : d)
     }))
   }
 
   function addTask(wi, dow) {
     setWeeks(p => p.map((w,i) => i!==wi ? w : {
-      ...w,
-      days: w.days.map(d => d.dow!==dow ? d : {...d, tasks:[...d.tasks,'']})
+      ...w, days: w.days.map(d => d.dow!==dow ? d : {...d,tasks:[...d.tasks,'']})
     }))
   }
 
   function removeTask(wi, dow, ti) {
-    // Önce ref'ten sil
     delete inputRefs.current[`${wi}-${dow}-${ti}`]
     setWeeks(p => p.map((w,i) => i!==wi ? w : {
-      ...w,
-      days: w.days.map(d => d.dow!==dow ? d : {
-        ...d,
-        tasks: d.tasks.length>1 ? d.tasks.filter((_,j)=>j!==ti) : ['']
+      ...w, days: w.days.map(d => d.dow!==dow ? d : {
+        ...d, tasks: d.tasks.length>1 ? d.tasks.filter((_,j)=>j!==ti) : ['']
       })
     }))
   }
@@ -166,27 +153,21 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
     flushCurrentWeek()
     if (wi >= weeks.length-1) return
     setWeeks(p => p.map((w,i) => i===wi+1 ? {
-      ...w,
-      days: p[wi].days.map(d => ({...d, tasks:[...d.tasks]}))
+      ...w, days: p[wi].days.map(d => ({...d, tasks:[...d.tasks]}))
     } : w))
   }
 
-  // Kaydederken ref'lerden güncel değerleri topla
   async function handleSave() {
     if (!planName.trim()) { alert('Plan adı gir'); return }
     flushCurrentWeek()
-
-    // Kısa bir tick bekle ki flush tamamlansın
     await new Promise(r => setTimeout(r, 50))
-
     setSaving(true)
     try {
-      // weeks state'ini al, ama input ref'lerinden güncel değerleri kullan
       const finalWeeks = weeks.map((w,wi) => {
         const nameEl = inputRefs.current[`wkname-${wi}`]
-        const name   = nameEl ? nameEl.value.trim()||w.name : w.name
         return {
-          ...w, name,
+          ...w,
+          name: nameEl ? (nameEl.value.trim()||w.name) : w.name,
           days: w.days.map(d => ({
             ...d,
             tasks: d.tasks.map((t,ti) => {
@@ -205,6 +186,7 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
         is_professional: true,
         buffer_day:      bufferDay,
       }).select().single()
+
       if (!goal) throw new Error('Hedef oluşturulamadı')
 
       const taskRows = []
@@ -226,17 +208,8 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
   }
 
   const wk = weeks[activeWk]
-  // Görev sayısını ref'lerden de hesapla
-  const totalTasks = weeks.reduce((s,w,wi) =>
-    s + w.days.reduce((s2,d) => {
-      if (!d.enabled) return s2
-      return s2 + d.tasks.filter((t,ti) => {
-        const el = inputRefs.current[`${wi}-${d.dow}-${ti}`]
-        return el ? el.value.trim() : t.trim()
-      }).length
-    }, 0)
-  , 0)
 
+  // ── Başlangıç: şablon seç veya sıfırdan ──
   if (view === 'start') return (
     <div style={s.overlay} onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={s.sheet}>
@@ -268,6 +241,7 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
     </div>
   )
 
+  // ── Plan ayarları ──
   if (view === 'setup') return (
     <div style={s.overlay} onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={s.sheet}>
@@ -278,6 +252,7 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
           </div>
           <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text3)',fontSize:20,cursor:'pointer'}}>✕</button>
         </div>
+
         <div style={{background:'var(--surface2)',borderRadius:16,padding:16,marginBottom:14}}>
           <div style={{marginBottom:12}}>
             <span style={s.label}>Plan Adı</span>
@@ -293,6 +268,7 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
             </div>
           </div>
         </div>
+
         <div style={{background:'rgba(251,191,36,0.07)',border:'1.5px solid rgba(251,191,36,0.25)',borderRadius:16,padding:14,marginBottom:14}}>
           <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:bufferDay!=null?10:0}}>
             <span style={{fontSize:16}}>⚡</span>
@@ -315,6 +291,7 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
             </div>
           )}
         </div>
+
         <button onClick={()=>setView('weeks')} disabled={!planName.trim()} style={{...s.btn('primary'),width:'100%',padding:'13px',opacity:planName.trim()?1:0.5}}>
           Haftalara Devam →
         </button>
@@ -357,13 +334,12 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
         {wk && (
           <div style={{background:'var(--surface2)',borderRadius:18,padding:16,marginBottom:14}}>
             <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:14}}>
-              {/* Hafta adı — uncontrolled, ref ile */}
               <input
                 key={`wkname-${activeWk}`}
                 ref={el => { if(el) inputRefs.current[`wkname-${activeWk}`] = el }}
                 defaultValue={wk.name}
                 placeholder="Hafta adı"
-                style={{...s.input, fontSize:14, fontWeight:700}}
+                style={{...s.input,fontSize:14,fontWeight:700}}
               />
               {activeWk<weeks.length-1 && (
                 <button onClick={()=>copyToNext(activeWk)} style={{...s.btn(),padding:'10px 11px',fontSize:11,flexShrink:0,whiteSpace:'nowrap'}}>Kopyala →</button>
@@ -393,12 +369,11 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
                 </div>
                 {day.tasks.map((task,ti) => (
                   <div key={`${activeWk}-${day.dow}-${ti}`} style={{display:'flex',gap:7,alignItems:'center',marginBottom:7}}>
-                    {/* Tamamen uncontrolled input — ref ile */}
                     <input
                       ref={el => { if(el) inputRefs.current[`${activeWk}-${day.dow}-${ti}`] = el }}
                       defaultValue={task}
                       placeholder={`${DOW_FULL[day.dow]} görevi ${ti+1}`}
-                      style={{...s.input, flex:1}}
+                      style={{...s.input,flex:1}}
                     />
                     <button onClick={()=>removeTask(activeWk,day.dow,ti)} style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:16,padding:'0 4px',flexShrink:0}}>✕</button>
                   </div>
