@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { createClient } from '../lib/supabase'
 
 const DOW_TR   = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
@@ -61,29 +61,51 @@ function buildWeeks(n) {
   }))
 }
 
-// Stabil key ile re-render'da focus kaybı olmaz
-function TaskInput({ value, onChange, placeholder, style }) {
-  return (
-    <input
-      defaultValue={value}
-      onBlur={e => { if (e.target.value !== value) onChange(e.target.value) }}
-      placeholder={placeholder}
-      style={style}
-    />
-  )
-}
-
 export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
-  const [view,       setView]      = useState('start')
-  const [planName,   setPlanName]  = useState('')
-  const [weekCount,  setWkCount]   = useState(4)
-  const [bufferDay,  setBufferDay] = useState(null)
-  const [weeks,      setWeeks]     = useState(() => buildWeeks(4))
-  const [activeWk,   setActiveWk]  = useState(0)
-  const [saving,     setSaving]    = useState(false)
+  const [view,      setView]      = useState('start')
+  const [planName,  setPlanName]  = useState('')
+  const [weekCount, setWkCount]   = useState(4)
+  const [bufferDay, setBufferDay] = useState(null)
+  // weeks sadece yapısal bilgiyi tutar (enabled/tasks count)
+  // gerçek task metinleri inputRefs'te
+  const [weeks,     setWeeks]     = useState(() => buildWeeks(4))
+  const [activeWk,  setActiveWk]  = useState(0)
+  const [saving,    setSaving]    = useState(false)
+
+  // Her input için ref tut: key = `${wi}-${dow}-${ti}`, weekname = `wkname-${wi}`
+  const inputRefs = useRef({})
+
   const supabase = createClient()
 
+  // Hafta değişince o haftanın input değerlerini ref'lerden oku ve weeks'e yaz
+  function flushCurrentWeek() {
+    const wi = activeWk
+    const nameEl = inputRefs.current[`wkname-${wi}`]
+    if (nameEl) {
+      setWeeks(p => p.map((w,i) => i===wi ? {...w, name: nameEl.value||w.name} : w))
+    }
+    setWeeks(p => p.map((w,i) => {
+      if (i !== wi) return w
+      return {
+        ...w,
+        days: w.days.map(d => ({
+          ...d,
+          tasks: d.tasks.map((t,ti) => {
+            const el = inputRefs.current[`${wi}-${d.dow}-${ti}`]
+            return el ? el.value : t
+          })
+        }))
+      }
+    }))
+  }
+
+  function switchWeek(newWi) {
+    flushCurrentWeek()
+    setActiveWk(newWi)
+  }
+
   function applyTemplate(tpl) {
+    inputRefs.current = {}
     setPlanName(tpl.name)
     setWkCount(tpl.weekCount)
     setWeeks(tpl.weeks.map(w => ({
@@ -94,10 +116,12 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
       })
     })))
     setBufferDay(tpl.bufferDay ?? null)
+    setActiveWk(0)
     setView('weeks')
   }
 
   function changeWeekCount(n) {
+    flushCurrentWeek()
     const count = Math.max(1, Math.min(52, n))
     setWkCount(count)
     setWeeks(prev => {
@@ -112,20 +136,67 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
     })
   }
 
-  function updateWeekName(wi, name)         { setWeeks(p => p.map((w,i) => i===wi ? {...w,name} : w)) }
-  function toggleDay(wi, dow)                { setWeeks(p => p.map((w,i) => i!==wi ? w : {...w, days:w.days.map(d => d.dow===dow ? {...d,enabled:!d.enabled} : d)})) }
-  function updateTask(wi, dow, ti, val)      { setWeeks(p => p.map((w,i) => i!==wi ? w : {...w, days:w.days.map(d => d.dow!==dow ? d : {...d, tasks:d.tasks.map((t,j) => j===ti ? val : t)})})) }
-  function addTask(wi, dow)                  { setWeeks(p => p.map((w,i) => i!==wi ? w : {...w, days:w.days.map(d => d.dow!==dow ? d : {...d, tasks:[...d.tasks,'']})})) }
-  function removeTask(wi, dow, ti)           { setWeeks(p => p.map((w,i) => i!==wi ? w : {...w, days:w.days.map(d => d.dow!==dow ? d : {...d, tasks:d.tasks.length>1 ? d.tasks.filter((_,j)=>j!==ti) : ['']})})) }
-  function copyToNext(wi) {
-    if (wi >= weeks.length-1) return
-    setWeeks(p => p.map((w,i) => i===wi+1 ? {...w, days:p[wi].days.map(d => ({...d, tasks:[...d.tasks]}))} : w))
+  function toggleDay(wi, dow) {
+    setWeeks(p => p.map((w,i) => i!==wi ? w : {
+      ...w,
+      days: w.days.map(d => d.dow===dow ? {...d, enabled:!d.enabled} : d)
+    }))
   }
 
+  function addTask(wi, dow) {
+    setWeeks(p => p.map((w,i) => i!==wi ? w : {
+      ...w,
+      days: w.days.map(d => d.dow!==dow ? d : {...d, tasks:[...d.tasks,'']})
+    }))
+  }
+
+  function removeTask(wi, dow, ti) {
+    // Önce ref'ten sil
+    delete inputRefs.current[`${wi}-${dow}-${ti}`]
+    setWeeks(p => p.map((w,i) => i!==wi ? w : {
+      ...w,
+      days: w.days.map(d => d.dow!==dow ? d : {
+        ...d,
+        tasks: d.tasks.length>1 ? d.tasks.filter((_,j)=>j!==ti) : ['']
+      })
+    }))
+  }
+
+  function copyToNext(wi) {
+    flushCurrentWeek()
+    if (wi >= weeks.length-1) return
+    setWeeks(p => p.map((w,i) => i===wi+1 ? {
+      ...w,
+      days: p[wi].days.map(d => ({...d, tasks:[...d.tasks]}))
+    } : w))
+  }
+
+  // Kaydederken ref'lerden güncel değerleri topla
   async function handleSave() {
     if (!planName.trim()) { alert('Plan adı gir'); return }
+    flushCurrentWeek()
+
+    // Kısa bir tick bekle ki flush tamamlansın
+    await new Promise(r => setTimeout(r, 50))
+
     setSaving(true)
     try {
+      // weeks state'ini al, ama input ref'lerinden güncel değerleri kullan
+      const finalWeeks = weeks.map((w,wi) => {
+        const nameEl = inputRefs.current[`wkname-${wi}`]
+        const name   = nameEl ? nameEl.value.trim()||w.name : w.name
+        return {
+          ...w, name,
+          days: w.days.map(d => ({
+            ...d,
+            tasks: d.tasks.map((t,ti) => {
+              const el = inputRefs.current[`${wi}-${d.dow}-${ti}`]
+              return el ? el.value.trim() : t.trim()
+            })
+          }))
+        }
+      })
+
       const { data:goal } = await supabase.from('goals').insert({
         name:            planName.trim(),
         total_days:      weekCount * 7,
@@ -137,11 +208,11 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
       if (!goal) throw new Error('Hedef oluşturulamadı')
 
       const taskRows = []
-      weeks.forEach((week, wi) => {
+      finalWeeks.forEach((week, wi) => {
         week.days.forEach(day => {
           if (!day.enabled) return
-          day.tasks.filter(t => t.trim()).forEach((taskName, ti) => {
-            taskRows.push({ goal_id:goal.id, name:taskName.trim(), order_index:ti, active_days:[day.dow], week_number:wi+1, week_name:week.name })
+          day.tasks.filter(t => t).forEach((taskName, ti) => {
+            taskRows.push({ goal_id:goal.id, name:taskName, order_index:ti, active_days:[day.dow], week_number:wi+1, week_name:week.name })
           })
         })
         if (bufferDay != null) {
@@ -155,7 +226,16 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
   }
 
   const wk = weeks[activeWk]
-  const totalTasks = weeks.reduce((s,w) => s + w.days.reduce((s2,d) => s2 + (d.enabled ? d.tasks.filter(t=>t.trim()).length : 0), 0), 0)
+  // Görev sayısını ref'lerden de hesapla
+  const totalTasks = weeks.reduce((s,w,wi) =>
+    s + w.days.reduce((s2,d) => {
+      if (!d.enabled) return s2
+      return s2 + d.tasks.filter((t,ti) => {
+        const el = inputRefs.current[`${wi}-${d.dow}-${ti}`]
+        return el ? el.value.trim() : t.trim()
+      }).length
+    }, 0)
+  , 0)
 
   if (view === 'start') return (
     <div style={s.overlay} onClick={e=>e.target===e.currentTarget&&onClose()}>
@@ -248,7 +328,7 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
       <div style={s.sheet}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
           <div>
-            <button onClick={()=>setView('setup')} style={{background:'none',border:'none',color:'var(--accent)',fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit',padding:0}}>← Ayarlar</button>
+            <button onClick={()=>{flushCurrentWeek();setView('setup')}} style={{background:'none',border:'none',color:'var(--accent)',fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit',padding:0}}>← Ayarlar</button>
             <div style={{fontSize:16,fontWeight:800,color:'var(--text)',marginTop:4}}>{planName}</div>
           </div>
           <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text3)',fontSize:20,cursor:'pointer'}}>✕</button>
@@ -257,10 +337,9 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
         {/* Hafta sekmeleri */}
         <div style={{display:'flex',gap:6,overflowX:'auto',paddingBottom:8,marginBottom:14,WebkitOverflowScrolling:'touch'}}>
           {weeks.map((w,i) => {
-            const cnt = w.days.reduce((s,d) => s+(d.enabled?d.tasks.filter(t=>t.trim()).length:0), 0)
             const isMs = (i+1)%4===0
             return (
-              <button key={i} onClick={()=>setActiveWk(i)} style={{
+              <button key={i} onClick={()=>switchWeek(i)} style={{
                 flexShrink:0, padding:'7px 13px', borderRadius:12, cursor:'pointer', fontFamily:'inherit',
                 background: i===activeWk?'var(--accent)':'var(--surface2)',
                 border: `1.5px solid ${i===activeWk?'var(--accent)':isMs?'rgba(251,191,36,0.4)':'var(--border)'}`,
@@ -269,7 +348,6 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
               }}>
                 {w.name}
                 {isMs&&i!==activeWk&&<span style={{position:'absolute',top:-4,right:-4,fontSize:10}}>🏆</span>}
-                {cnt>0&&<span style={{marginLeft:5,opacity:.7,fontSize:10}}>{cnt}</span>}
               </button>
             )
           })}
@@ -278,12 +356,12 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
         {/* Aktif hafta */}
         {wk && (
           <div style={{background:'var(--surface2)',borderRadius:18,padding:16,marginBottom:14}}>
-            {/* Hafta adı */}
             <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:14}}>
+              {/* Hafta adı — uncontrolled, ref ile */}
               <input
                 key={`wkname-${activeWk}`}
+                ref={el => { if(el) inputRefs.current[`wkname-${activeWk}`] = el }}
                 defaultValue={wk.name}
-                onBlur={e => updateWeekName(activeWk, e.target.value)}
                 placeholder="Hafta adı"
                 style={{...s.input, fontSize:14, fontWeight:700}}
               />
@@ -315,10 +393,10 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
                 </div>
                 {day.tasks.map((task,ti) => (
                   <div key={`${activeWk}-${day.dow}-${ti}`} style={{display:'flex',gap:7,alignItems:'center',marginBottom:7}}>
+                    {/* Tamamen uncontrolled input — ref ile */}
                     <input
-                      key={`task-${activeWk}-${day.dow}-${ti}`}
+                      ref={el => { if(el) inputRefs.current[`${activeWk}-${day.dow}-${ti}`] = el }}
                       defaultValue={task}
-                      onBlur={e => { if (e.target.value !== task) updateTask(activeWk, day.dow, ti, e.target.value) }}
                       placeholder={`${DOW_FULL[day.dow]} görevi ${ti+1}`}
                       style={{...s.input, flex:1}}
                     />
@@ -331,14 +409,13 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
         )}
 
         <div style={{background:'rgba(124,111,247,0.07)',border:'1.5px solid rgba(124,111,247,0.2)',borderRadius:14,padding:'10px 14px',marginBottom:16,fontSize:12,color:'var(--text2)'}}>
-          <b style={{color:'var(--accent)'}}>{weekCount} hafta</b> · <b style={{color:'var(--accent)'}}>{weekCount*7} gün</b> · <b style={{color:'var(--accent)'}}>{totalTasks} görev</b>
+          <b style={{color:'var(--accent)'}}>{weekCount} hafta</b> · <b style={{color:'var(--accent)'}}>{weekCount*7} gün</b>
           {bufferDay!=null && <span style={{color:'var(--mid)'}}> · ⚡ {DOW_TR[bufferDay]} telafi günü</span>}
-          {totalTasks===0 && <span style={{color:'var(--text3)'}}> — en az 1 görev ekle</span>}
         </div>
 
         <div style={{display:'flex',gap:10}}>
           <button onClick={onClose} style={{...s.btn(),flex:'0 0 auto'}}>İptal</button>
-          <button onClick={handleSave} disabled={saving||!planName.trim()||totalTasks===0} style={{...s.btn('primary'),flex:1,opacity:saving||!planName.trim()||totalTasks===0?0.5:1}}>
+          <button onClick={handleSave} disabled={saving||!planName.trim()} style={{...s.btn('primary'),flex:1,opacity:saving||!planName.trim()?0.5:1}}>
             {saving?'Oluşturuluyor...':'🚀 Planı Oluştur'}
           </button>
         </div>
