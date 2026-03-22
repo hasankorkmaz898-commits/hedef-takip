@@ -1,8 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createClient } from '../lib/supabase'
-
-const DOW_TR   = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
-const DOW_FULL = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi']
 import ProfilePanel from '../components/ProfilePanel'
 import SharedGoalsPanel from '../components/SharedGoalsPanel'
 import ProfessionalPlanModal from '../components/ProfessionalPlanModal'
@@ -358,20 +355,16 @@ export default function Home() {
   }
 
   async function transferTaskTo(goalId, taskId, targetDate) {
+    // 1. Bugünü skipped_dates'e ekle
+    // 2. targetDate'i extra_dates'e ekle
     const today = todayStr()
     const t = (tasks[goalId]||[]).find(x=>x.id===taskId)
     if (!t) return
-    // Stringlere çevir (Supabase date[] için)
-    const skipped    = [...new Set([...(t.skipped_dates||[]).map(String), today])]
-    const extraDates = [...new Set([...(t.extra_dates||[]).map(String), targetDate])]
-    // Anlık UI güncellemesi — Supabase yanıtı bekleme
+    const skipped    = [...new Set([...(t.skipped_dates||[]), today])]
+    const extraDates = [...new Set([...(t.extra_dates||[]), targetDate])]
+    await supabase.from('tasks').update({ skipped_dates:skipped, extra_dates:extraDates }).eq('id', taskId)
     setTasks(p=>({...p,[goalId]:p[goalId].map(x=>x.id===taskId?{...x,skipped_dates:skipped,extra_dates:extraDates}:x)}))
-    // Arka planda kaydet
-    supabase.from('tasks').update({ skipped_dates:skipped, extra_dates:extraDates }).eq('id', taskId)
-    // Toast mesajı
-    const tDow = new Date(targetDate+'T00:00:00').getDay()
-    const isBuffer = t.buffer_day != null || goal?.buffer_day != null
-    showToast(`📅 ${t.name} → ${DOW_FULL[tDow]}'ye aktarıldı`)
+    showToast(`📅 Görev ${targetDate} tarihine taşındı`)
   }
 
   async function endTask(goalId, taskId) {
@@ -1122,6 +1115,7 @@ function RiskMeter({ score }) {
 
 /* ─── Analytics Panel ────────────────────────────────────────────────────── */
 function AnalyticsPanel({ goals, tasks, logs }) {
+  const DOW_TR = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
   const today  = todayStr()
   const [expandedId, setExpandedId] = useState(null)
   const [analyticTab, setAnalyticTab] = useState({}) // {goalId: 'overview'|'weekly'|'trend'|'tasks'}
@@ -1396,7 +1390,7 @@ function AnalyticsPanel({ goals, tasks, logs }) {
                         <>
                           <div style={{ ...css.label, marginBottom:8 }}>Gün Bazlı Ortalama</div>
                           <div style={{ display:'flex', gap:4, alignItems:'flex-end', height:64, marginBottom:6 }}>
-                            {[1,2,3,4,5,6,0].map((dow)=>{ const d=DOW_TR[dow]; {
+                            {[1,2,3,4,5,6,0].map(dow=>{
                               const v = dowAvg[dow]
                               const h = v!==null ? Math.max(6, Math.round(v/100*50)) : 4
                               const isBest  = dow===bestDow  && v!==null
@@ -1406,7 +1400,7 @@ function AnalyticsPanel({ goals, tasks, logs }) {
                                 <div key={dow} style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', gap:3 }}>
                                   <div style={{ fontSize:9, color:isBest?'var(--good)':isWorst?'var(--bad)':'var(--text3)', fontWeight:700 }}>{v!==null?v+'%':''}</div>
                                   <div style={{ width:'100%', height:h, background:v!==null?col:'var(--surface2)', borderRadius:6, opacity:v!==null?0.85:0.3 }} />
-                                  <div style={{ fontSize:10, color:isBest?'var(--good)':isWorst?'var(--bad)':'var(--text3)', fontWeight:isBest||isWorst?700:500 }}>{d}</div>
+                                  <div style={{ fontSize:10, color:isBest?'var(--good)':isWorst?'var(--bad)':'var(--text3)', fontWeight:isBest||isWorst?700:500 }}>{DOW_TR[dow]}</div>
                                 </div>
                               )
                             })}
@@ -1536,7 +1530,7 @@ function HeatmapCalendar({ tasks, logs, startDate, totalDays }) {
     return 'rgba(248,113,113,0.18)' // aktif gün ama yapılmadı
   }
 
-  const DOW_SHORT = ['Pt','Sa','Ça','Pe','Cu','Ct','Pz'] // Pzt→Paz (0-6 index'i dışarıdan gelir)
+  const DOW_SHORT = ['Pt','Sa','Ça','Pe','Cu','Ct','Pz']
 
   // İstatistikler
   const activeDays = days.filter(d => d.inGoal && !d.isFuture && d.isActive)
@@ -1619,25 +1613,13 @@ function HeatmapCalendar({ tasks, logs, startDate, totalDays }) {
 function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onToggleTask, onSetQuality, onSkipTask, onUnskipTask, onEndTask, onRestoreTask, openMenuId, setOpenMenuId, onWeekClose, onTransferTask }) {
   const allWeekNums = [...new Set(tasks.map(t=>t.week_number).filter(Boolean))].sort((a,b)=>a-b)
   const [activeWeek, setActiveWeek] = useState(currentWeekNum || allWeekNums[0] || 1)
+  const DOW_FULL = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi']
 
   const weekTasks = tasks.filter(t => t.week_number === activeWeek)
   const weekName  = weekTasks[0]?.week_name || `${activeWeek}. Hafta`
 
-  // O haftanın aktif günleri — Pzt(1) ile başla, Paz(0) ile bitir
-  const bufferDow  = goal?.buffer_day ?? null
-  const MON_FIRST  = [1,2,3,4,5,6,0] // Pazartesi→Pazar sırası
-  const rawDows    = new Set([
-    ...weekTasks.flatMap(t => t.active_days||[]),
-    // Extra dates'i de dahil et (aktarılan görevler)
-    ...(isCurrent ? weekTasks.flatMap(t => (t.extra_dates||[]).filter(d=>{
-      const wStart = addDays(goal?.start_date||today, (activeWeek-1)*7)
-      const wEnd   = addDays(goal?.start_date||today, activeWeek*7)
-      return d>=wStart && d<wEnd
-    }).map(d=>new Date(d+'T00:00:00').getDay())) : []),
-    // Telafi gününü de ekle
-    ...(bufferDow!=null ? [bufferDow] : [])
-  ])
-  const activeDows = MON_FIRST.filter(d => rawDows.has(d))
+  // O haftanın aktif günleri
+  const activeDows = [1,2,3,4,5,6,0].filter(d => new Set(weekTasks.flatMap(t=>t.active_days||[])).has(d))
 
   // Bugün bu haftada mı?
   const isCurrent = activeWeek === currentWeekNum
@@ -1686,23 +1668,9 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
       {activeDows.length===0 ? (
         <div style={{ textAlign:'center', padding:'20px 0', color:'var(--text3)', fontSize:13 }}>Bu haftada görev yok</div>
       ) : activeDows.map(dow => {
-        // Bu güne aktarılmış görevler (extra_dates)
-        const wStart = addDays(goal?.start_date||today, (activeWeek-1)*7)
-        const wEnd   = addDays(goal?.start_date||today, activeWeek*7)
-        const isBufferDay = bufferDow===dow
-        // Buffer görevleri + bu güne aktarılmış görevler
-        const bufferTasks  = isBufferDay ? weekTasks.filter(t=>t.is_buffer) : []
-        const transferredTasks = weekTasks.filter(t => {
-          if (t.active_days?.includes(dow)) return false // zaten normal günde var
-          return (t.extra_dates||[]).some(d=>{
-            const ed = d.toString ? d.toString() : d
-            const edDow = new Date(ed+'T00:00:00').getDay()
-            return edDow===dow && ed>=wStart && ed<wEnd
-          })
-        })
-        const regularTasks = weekTasks.filter(t => t.active_days?.includes(dow) && !t.is_buffer)
-        const dayTasks = [...regularTasks, ...transferredTasks, ...bufferTasks]
+        const dayTasks = weekTasks.filter(t => t.active_days?.includes(dow) && !t.is_buffer)
         if (!dayTasks.length) return null
+        const [dayOpen, setDayOpen] = [true, ()=>{}] // hep açık
         const dayName = DOW_FULL[dow]
         const dayDone = isCurrent ? dayTasks.filter(t=>todayLogs.find(l=>l.task_id===t.id)).length : 0
         const isToday = new Date().getDay()===dow && isCurrent
@@ -1710,8 +1678,7 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
         return (
           <div key={dow} style={{ marginBottom:10 }}>
             <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6, padding:'0 2px' }}>
-              <span style={{ fontSize:11, fontWeight:700, color: isToday?'var(--accent)':isBufferDay?'var(--mid)':'var(--text3)', textTransform:'uppercase', letterSpacing:'.06em' }}>{dayName}</span>
-              {isBufferDay && <span style={{ fontSize:10, background:'rgba(251,191,36,0.12)', color:'var(--mid)', borderRadius:99, padding:'1px 8px', fontWeight:700 }}>⚡ Telafi Günü</span>}
+              <span style={{ fontSize:11, fontWeight:700, color: isToday?'var(--accent)':'var(--text3)', textTransform:'uppercase', letterSpacing:'.06em' }}>{dayName}</span>
               {isToday && <span style={{ fontSize:10, background:'rgba(124,111,247,0.15)', color:'var(--accent)', borderRadius:99, padding:'1px 7px', fontWeight:600 }}>Bugün · {dayDone}/{dayTasks.length}</span>}
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
@@ -1736,8 +1703,6 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
                         <div style={{ flex:1, fontSize:13, fontWeight:500, textDecoration:(q||isEnded)?'line-through':'none', color:q||isSkipped||isEnded?'var(--text3)':'var(--text)' }}>
                           {t.name}
                           {isSkipped && <span style={{ fontSize:10, color:'var(--mid)', marginLeft:6 }}>atlandı</span>}
-                          {transferredTasks.includes(t) && <span style={{ fontSize:10, color:'var(--accent)', marginLeft:6 }}>📅 aktarıldı</span>}
-                          {t.is_buffer && <span style={{ fontSize:10, color:'var(--mid)', marginLeft:6 }}>⚡</span>}
                         </div>
                         {q && isActive && <span style={{ fontSize:10, fontWeight:700, color:`var(--${q})`, background:qBg[q], padding:'2px 7px', borderRadius:99 }}>{{good:'İyi',mid:'Orta',bad:'Kötü'}[q]}</span>}
                       </div>
@@ -1820,13 +1785,13 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
   )
 }
 
+/* ─── Task Menu ──────────────────────────────────────────────────────────── */
 const menuBtn = {
   display:'flex', alignItems:'center', gap:8, width:'100%', padding:'8px 10px',
   background:'none', border:'none', borderRadius:9, color:'var(--text2)', fontSize:13,
   fontWeight:500, cursor:'pointer', fontFamily:'inherit', textAlign:'left'
 }
 
-/* ─── Task Menu ──────────────────────────────────────────────────────────── */
 function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, onRestore, isPro, onTransferToTomorrow, onTransferToBuffer, bufferDay }) {
   const isOpen    = openId === taskId
   const isActive  = status === 'active'
@@ -1906,6 +1871,7 @@ function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, 
 
 
 /* ─── Goal Modal ─────────────────────────────────────────────────────────── */
+const DOW_TR  = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
 
 const GOAL_TEMPLATES = [
   { icon:'🏃', name:'30 günde koşu alışkanlığı', days:30,
@@ -2068,7 +2034,7 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
                       Hangi günler aktif? {t.active_days.length===0 && <span style={{ color:'var(--accent)', fontWeight:500, textTransform:'none', letterSpacing:'normal', fontSize:11 }}>· her gün (varsayılan)</span>}
                     </div>
                     <div style={{ display:'flex', gap:6 }}>
-                      {[1,2,3,4,5,6,0].map((dow)=>{ const label=DOW_TR[dow];
+                      {[1,2,3,4,5,6,0].map(dow=>{
                         const on = t.active_days.includes(dow)
                         return (
                           <button key={dow} onClick={()=>toggleDay(i,dow)} style={{
@@ -2076,7 +2042,7 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
                             background: on ? 'var(--accent)' : 'var(--surface)',
                             border: `1.5px solid ${on ? 'var(--accent)' : 'var(--border)'}`,
                             color: on ? '#fff' : 'var(--text3)',
-                          }}>{label}</button>
+                          }}>{DOW_TR[dow]}</button>
                         )
                       })}
                     </div>
