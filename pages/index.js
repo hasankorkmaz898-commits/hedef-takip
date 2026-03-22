@@ -1858,13 +1858,14 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
   )
 }
 
+
+/* ─── Task Menu ──────────────────────────────────────────────────────────── */
 const menuBtn = {
   display:'flex', alignItems:'center', gap:8, width:'100%', padding:'8px 10px',
   background:'none', border:'none', borderRadius:9, color:'var(--text2)', fontSize:13,
   fontWeight:500, cursor:'pointer', fontFamily:'inherit', textAlign:'left'
 }
 
-/* ─── Task Menu ──────────────────────────────────────────────────────────── */
 function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, onRestore, isPro, onTransferToTomorrow, onTransferToBuffer, bufferDay }) {
   const isOpen    = openId === taskId
   const isActive  = status === 'active'
