@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { createClient } from '../lib/supabase'
 
 const DOW_TR   = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
@@ -23,7 +23,7 @@ const s = {
   }),
 }
 
-const PRO_TEMPLATES = [
+function getProTemplates() { return [
   {
     icon:'🏃', name:'12 Haftalık Maraton Hazırlığı', weekCount:12, bufferDay:0,
     weeks: Array.from({length:12},(_,i)=>({
@@ -52,7 +52,7 @@ const PRO_TEMPLATES = [
       days: [{dow:1,enabled:true,tasks:['Sabah meditasyonu 10 dk','Günlük yaz']},{dow:2,enabled:true,tasks:['Nefes egzersizi']},{dow:3,enabled:true,tasks:['Sabah meditasyonu','Şükran listesi']},{dow:4,enabled:true,tasks:['Yürüyüş meditasyonu']},{dow:5,enabled:true,tasks:['Sabah meditasyonu','Haftalık özet']},{dow:6,enabled:false,tasks:['']},{dow:0,enabled:false,tasks:['']}]
     }))
   },
-]
+]}
 
 function buildWeeks(n) {
   return Array.from({length:n}, (_,i) => ({
@@ -225,7 +225,7 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
     setSaving(false)
   }
 
-  const wk = weeks[activeWk]
+  const wk = weeks[activeWk] || weeks[0] || null
   // Görev sayısını ref'lerden de hesapla
   const totalTasks = weeks.reduce((s,w,wi) =>
     s + w.days.reduce((s2,d) => {
@@ -249,7 +249,7 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
         </div>
         <span style={s.label}>Hazır Şablonlar</span>
         <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:20}}>
-          {PRO_TEMPLATES.map((tpl,i) => (
+          {getProTemplates().map((tpl,i) => (
             <button key={i} onClick={()=>applyTemplate(tpl)} style={{display:'flex',alignItems:'center',gap:12,padding:'13px 16px',background:'var(--surface2)',border:'1.5px solid var(--border)',borderRadius:16,cursor:'pointer',textAlign:'left',width:'100%'}}>
               <span style={{fontSize:24,flexShrink:0}}>{tpl.icon}</span>
               <div style={{flex:1}}>
@@ -379,7 +379,7 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
             <span style={s.label}>Aktif günler</span>
             <div style={{display:'flex',gap:5,marginBottom:16}}>
               {[1,2,3,4,5,6,0].map(dow => (
-                <button key={dow} onClick={()=>toggleDay(activeWk,dow)} style={s.dayBtn(wk.days[dow].enabled)}>{DOW_TR[dow]}</button>
+                <button key={dow} onClick={()=>toggleDay(activeWk,dow)} style={s.dayBtn(wk.days.find(d=>d.dow===dow)?.enabled||false)}>{DOW_TR[dow]}</button>
               ))}
             </div>
 
