@@ -36,7 +36,7 @@ const daysLeft   = (s,t) => Math.max(0, t-daysElapsed(s))
 
 function taskActiveOnDay(task, ds) {
   // extra_dates: bu tarihte özel olarak aktif (ertesi güne/telafi gününe aktarıldı)
-  if (task.extra_dates?.includes(ds)) return true
+  if (task.extra_dates?.map(String).includes(String(ds))) return true
   // Görev oluşturulmadan önceki günlerde aktif değil
   if (task.created_at) {
     const taskDate = task.created_at.slice(0,10)
@@ -58,7 +58,9 @@ function activeTasks(tasks, ds) {
 
 function taskStatus(task, ds) {
   if (task.ended_at && ds >= task.ended_at) return 'ended'
-  if (task.skipped_dates?.includes(ds)) return 'skipped'
+  // extra_dates'te bu tarih varsa active — aktarılmış görev
+  if (task.extra_dates?.map(String).includes(String(ds))) return 'active'
+  if (task.skipped_dates?.map(String).includes(String(ds))) return 'skipped'
   if (!taskActiveOnDay(task, ds)) return 'inactive'
   return 'active'
 }
@@ -1619,28 +1621,31 @@ function HeatmapCalendar({ tasks, logs, startDate, totalDays }) {
 function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onToggleTask, onSetQuality, onSkipTask, onUnskipTask, onEndTask, onRestoreTask, openMenuId, setOpenMenuId, onWeekClose, onTransferTask }) {
   const allWeekNums = [...new Set(tasks.map(t=>t.week_number).filter(Boolean))].sort((a,b)=>a-b)
   const [activeWeek, setActiveWeek] = useState(currentWeekNum || allWeekNums[0] || 1)
+  const DOW_FULL_ARR = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi']
 
-  const weekTasks = tasks.filter(t => t.week_number === activeWeek)
-  const weekName  = weekTasks[0]?.week_name || `${activeWeek}. Hafta`
-
-  // O haftanın aktif günleri — Pzt(1) ile başla, Paz(0) ile bitir
+  const weekTasks  = tasks.filter(t => t.week_number === activeWeek)
+  const weekName   = weekTasks[0]?.week_name || `${activeWeek}. Hafta`
   const bufferDow  = goal?.buffer_day ?? null
-  const MON_FIRST  = [1,2,3,4,5,6,0] // Pazartesi→Pazar sırası
-  const rawDows    = new Set([
+  const MON_FIRST  = [1,2,3,4,5,6,0]
+
+  // isCurrent önce tanımla
+  const isCurrent = activeWeek === currentWeekNum
+
+  // Bu haftanın başlangıç/bitiş tarihleri
+  const wStartOfWeek = goal?.start_date ? addDays(goal.start_date,(activeWeek-1)*7) : today
+  const wEndOfWeek   = goal?.start_date ? addDays(goal.start_date,activeWeek*7)     : today
+
+  // Aktif dow'lar: normal görevler + bu haftaya aktarılanlar + telafi günü
+  const rawDows = new Set([
     ...weekTasks.flatMap(t => t.active_days||[]),
-    // Extra dates'i de dahil et (aktarılan görevler)
-    ...(isCurrent ? weekTasks.flatMap(t => (t.extra_dates||[]).filter(d=>{
-      const wStart = addDays(goal?.start_date||today, (activeWeek-1)*7)
-      const wEnd   = addDays(goal?.start_date||today, activeWeek*7)
-      return d>=wStart && d<wEnd
-    }).map(d=>new Date(d+'T00:00:00').getDay())) : []),
-    // Telafi gününü de ekle
+    ...weekTasks.flatMap(t => (t.extra_dates||[]).filter(d=>d>=wStartOfWeek&&d<wEndOfWeek).map(d=>new Date(d+'T00:00:00').getDay())),
+    // Başka haftadan bu haftaya aktarılan görevler
+    ...tasks.filter(t=>t.week_number!==activeWeek).flatMap(t =>
+      (t.extra_dates||[]).filter(d=>d>=wStartOfWeek&&d<wEndOfWeek).map(d=>new Date(d+'T00:00:00').getDay())
+    ),
     ...(bufferDow!=null ? [bufferDow] : [])
   ])
   const activeDows = MON_FIRST.filter(d => rawDows.has(d))
-
-  // Bugün bu haftada mı?
-  const isCurrent = activeWeek === currentWeekNum
 
   return (
     <div>
@@ -1682,44 +1687,76 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
         )}
       </div>
 
-      {/* Günlere göre grupla */}
+      {/* Günlere göre grupla — her gün için tam tarihi hesapla */}
       {activeDows.length===0 ? (
         <div style={{ textAlign:'center', padding:'20px 0', color:'var(--text3)', fontSize:13 }}>Bu haftada görev yok</div>
       ) : activeDows.map(dow => {
-        // Bu güne aktarılmış görevler (extra_dates)
         const wStart = addDays(goal?.start_date||today, (activeWeek-1)*7)
         const wEnd   = addDays(goal?.start_date||today, activeWeek*7)
+
+        // Bu haftanın bu dow'una karşılık gelen tam tarihi bul
+        let dowDate = null
+        for(let i=0;i<7;i++){
+          const d = addDays(wStart, i)
+          if(new Date(d+'T00:00:00').getDay()===dow){ dowDate=d; break }
+        }
+
         const isBufferDay = bufferDow===dow
-        // Buffer görevleri + bu güne aktarılmış görevler
-        const bufferTasks  = isBufferDay ? weekTasks.filter(t=>t.is_buffer) : []
-        const transferredTasks = weekTasks.filter(t => {
-          if (t.active_days?.includes(dow)) return false // zaten normal günde var
-          return (t.extra_dates||[]).some(d=>{
-            const ed = d.toString ? d.toString() : d
-            const edDow = new Date(ed+'T00:00:00').getDay()
-            return edDow===dow && ed>=wStart && ed<wEnd
-          })
-        })
+        const isToday     = dowDate===today && isCurrent
+
+        // Normal görevler (active_days bu dow'u içeriyor)
         const regularTasks = weekTasks.filter(t => t.active_days?.includes(dow) && !t.is_buffer)
-        const dayTasks = [...regularTasks, ...transferredTasks, ...bufferTasks]
-        if (!dayTasks.length) return null
-        const dayName = DOW_FULL[dow]
+        // Bu güne aktarılmış görevler — extra_dates'te bu günün TAM TARİHİ var
+        const transferredTasks = weekTasks.filter(t => {
+          if (t.active_days?.includes(dow)) return false // zaten burada
+          return (t.extra_dates||[]).map(String).includes(dowDate)
+        })
+        // Yarına aktarılmış görevler — bu görevin extra_dates'i bu tarihi içeriyor
+        // (farklı bir haftadan da gelebilir)
+        const crossTransferred = tasks.filter(t => {
+          if (t.week_number === activeWeek) return false // zaten hafta görevleri yukarıda
+          return (t.extra_dates||[]).map(String).includes(dowDate)
+        })
+        // Buffer görevleri (is_buffer)
+        const bufferTasks = isBufferDay ? weekTasks.filter(t=>t.is_buffer) : []
+
+        const dayTasks = [...regularTasks, ...transferredTasks, ...crossTransferred, ...bufferTasks]
+        if (!dayTasks.length && !isBufferDay) return null
+        if (!dayTasks.length && isBufferDay) {
+          // Telafi günü boşsa da göster (boş placeholder)
+          return (
+            <div key={dow} style={{ marginBottom:10 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6, padding:'0 2px' }}>
+                <span style={{ fontSize:11, fontWeight:700, color:'var(--mid)', textTransform:'uppercase', letterSpacing:'.06em' }}>{DOW_FULL_ARR[dow]}</span>
+                <span style={{ fontSize:10, background:'rgba(251,191,36,0.12)', color:'var(--mid)', borderRadius:99, padding:'1px 8px', fontWeight:700 }}>⚡ Telafi Günü</span>
+                {dowDate && <span style={{ fontSize:10, color:'var(--text3)' }}>{dowDate}</span>}
+                {isToday && <span style={{ fontSize:10, background:'rgba(124,111,247,0.15)', color:'var(--accent)', borderRadius:99, padding:'1px 7px', fontWeight:600 }}>Bugün</span>}
+              </div>
+              <div style={{ padding:'10px 12px', background:'var(--surface2)', borderRadius:'var(--r-md)', fontSize:12, color:'var(--text3)', textAlign:'center' }}>
+                Henüz aktarılan görev yok
+              </div>
+            </div>
+          )
+        }
+        const dayName = DOW_FULL_ARR[dow]
         const dayDone = isCurrent ? dayTasks.filter(t=>todayLogs.find(l=>l.task_id===t.id)).length : 0
-        const isToday = new Date().getDay()===dow && isCurrent
 
         return (
           <div key={dow} style={{ marginBottom:10 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6, padding:'0 2px' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:6, padding:'0 2px', flexWrap:'wrap' }}>
               <span style={{ fontSize:11, fontWeight:700, color: isToday?'var(--accent)':isBufferDay?'var(--mid)':'var(--text3)', textTransform:'uppercase', letterSpacing:'.06em' }}>{dayName}</span>
               {isBufferDay && <span style={{ fontSize:10, background:'rgba(251,191,36,0.12)', color:'var(--mid)', borderRadius:99, padding:'1px 8px', fontWeight:700 }}>⚡ Telafi Günü</span>}
+              {dowDate && <span style={{ fontSize:10, color:'var(--text3)' }}>{dowDate.slice(5).replace('-','/')}</span>}
+              {(transferredTasks.length>0||crossTransferred.length>0) && <span style={{ fontSize:10, background:'rgba(74,222,128,0.1)', color:'var(--good)', borderRadius:99, padding:'1px 7px', fontWeight:600 }}>+{transferredTasks.length+crossTransferred.length} aktarıldı</span>}
               {isToday && <span style={{ fontSize:10, background:'rgba(124,111,247,0.15)', color:'var(--accent)', borderRadius:99, padding:'1px 7px', fontWeight:600 }}>Bugün · {dayDone}/{dayTasks.length}</span>}
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
               {dayTasks.map((t,ti) => {
-                const tStatus  = isCurrent ? taskStatus(t, today) : (activeWeek<currentWeekNum?'ended':'active')
-                const isActive = tStatus==='active'
-                const isSkipped= tStatus==='skipped'
-                const isEnded  = tStatus==='ended'
+                const tStatus      = isCurrent ? taskStatus(t, today) : (activeWeek<currentWeekNum?'ended':'active')
+                const isActive     = tStatus==='active'
+                const isSkipped    = tStatus==='skipped'
+                const isEnded      = tStatus==='ended'
+                const isTransferred = dowDate && (t.extra_dates||[]).map(String).includes(dowDate) && !t.active_days?.includes(dow)
                 const log = todayLogs.find(l=>l.task_id===t.id)
                 const q   = log?.quality
                 const qBg    = { good:'var(--good-bg)', mid:'var(--mid-bg)', bad:'var(--bad-bg)' }
@@ -1736,6 +1773,7 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
                         <div style={{ flex:1, fontSize:13, fontWeight:500, textDecoration:(q||isEnded)?'line-through':'none', color:q||isSkipped||isEnded?'var(--text3)':'var(--text)' }}>
                           {t.name}
                           {isSkipped && <span style={{ fontSize:10, color:'var(--mid)', marginLeft:6 }}>atlandı</span>}
+                          {isTransferred && <span style={{ fontSize:10, color:'var(--good)', marginLeft:6, background:'rgba(74,222,128,0.1)', padding:'1px 6px', borderRadius:99 }}>📅 aktarıldı</span>}
                           {transferredTasks.includes(t) && <span style={{ fontSize:10, color:'var(--accent)', marginLeft:6 }}>📅 aktarıldı</span>}
                           {t.is_buffer && <span style={{ fontSize:10, color:'var(--mid)', marginLeft:6 }}>⚡</span>}
                         </div>
