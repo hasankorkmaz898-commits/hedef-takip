@@ -1395,7 +1395,7 @@ function AnalyticsPanel({ goals, tasks, logs }) {
                         <>
                           <div style={{ ...css.label, marginBottom:8 }}>Gün Bazlı Ortalama</div>
                           <div style={{ display:'flex', gap:4, alignItems:'flex-end', height:64, marginBottom:6 }}>
-                            {DOW_TR.map((d,dow)=>{
+                            {[1,2,3,4,5,6,0].map((dow)=>{ const d=DOW_TR[dow]; {
                               const v = dowAvg[dow]
                               const h = v!==null ? Math.max(6, Math.round(v/100*50)) : 4
                               const isBest  = dow===bestDow  && v!==null
@@ -1535,7 +1535,7 @@ function HeatmapCalendar({ tasks, logs, startDate, totalDays }) {
     return 'rgba(248,113,113,0.18)' // aktif gün ama yapılmadı
   }
 
-  const DOW_SHORT = ['Pt','Sa','Ça','Pe','Cu','Ct','Pz']
+  const DOW_SHORT = ['Pt','Sa','Ça','Pe','Cu','Ct','Pz'] // Pzt→Paz (0-6 index'i dışarıdan gelir)
 
   // İstatistikler
   const activeDays = days.filter(d => d.inGoal && !d.isFuture && d.isActive)
@@ -2068,7 +2068,7 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
                       Hangi günler aktif? {t.active_days.length===0 && <span style={{ color:'var(--accent)', fontWeight:500, textTransform:'none', letterSpacing:'normal', fontSize:11 }}>· her gün (varsayılan)</span>}
                     </div>
                     <div style={{ display:'flex', gap:6 }}>
-                      {DOW_TR.map((label,dow)=>{
+                      {[1,2,3,4,5,6,0].map((dow)=>{ const label=DOW_TR[dow];
                         const on = t.active_days.includes(dow)
                         return (
                           <button key={dow} onClick={()=>toggleDay(i,dow)} style={{
