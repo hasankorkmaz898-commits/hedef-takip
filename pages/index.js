@@ -1,13 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createClient } from '../lib/supabase'
-
-const DOW_TR   = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
-const DOW_FULL = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi']
 import ProfilePanel from '../components/ProfilePanel'
 import SharedGoalsPanel from '../components/SharedGoalsPanel'
 import ProfessionalPlanModal from '../components/ProfessionalPlanModal'
-import WeeklyCheckin from '../components/WeeklyCheckin'
-import MilestoneCelebration from '../components/MilestoneCelebration'
 
 /* ─── Constants ──────────────────────────────────────────────────────────── */
 const Q      = { good: 1.0, mid: 0.6, bad: 0.3 }
@@ -35,8 +30,6 @@ const daysElapsed= s   => Math.max(0, Math.floor((new Date()-new Date(s))/864000
 const daysLeft   = (s,t) => Math.max(0, t-daysElapsed(s))
 
 function taskActiveOnDay(task, ds) {
-  // extra_dates: bu tarihte özel olarak aktif (ertesi güne/telafi gününe aktarıldı)
-  if (task.extra_dates?.map(String).includes(String(ds))) return true
   // Görev oluşturulmadan önceki günlerde aktif değil
   if (task.created_at) {
     const taskDate = task.created_at.slice(0,10)
@@ -58,9 +51,7 @@ function activeTasks(tasks, ds) {
 
 function taskStatus(task, ds) {
   if (task.ended_at && ds >= task.ended_at) return 'ended'
-  // extra_dates'te bu tarih varsa active — aktarılmış görev
-  if (task.extra_dates?.map(String).includes(String(ds))) return 'active'
-  if (task.skipped_dates?.map(String).includes(String(ds))) return 'skipped'
+  if (task.skipped_dates?.includes(ds)) return 'skipped'
   if (!taskActiveOnDay(task, ds)) return 'inactive'
   return 'active'
 }
@@ -191,8 +182,6 @@ export default function Home() {
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [expandedGoal,   setExpandedGoal]   = useState(null)
   const [showProPlan,    setShowProPlan]    = useState(false)
-  const [checkinGoal,    setCheckinGoal]    = useState(null)  // {goal, weekNum, weekName, stats}
-  const [milestoneData,  setMilestoneData]  = useState(null)  // {weekNum, weekName, stats}
 
   /* Auth */
   useEffect(() => {
@@ -359,23 +348,6 @@ export default function Home() {
     setTasks(p=>({...p,[goalId]:p[goalId].map(x=>x.id===taskId?{...x,skipped_dates:skipped}:x)}))
   }
 
-  async function transferTaskTo(goalId, taskId, targetDate) {
-    const today = todayStr()
-    const t = (tasks[goalId]||[]).find(x=>x.id===taskId)
-    if (!t) return
-    // Stringlere çevir (Supabase date[] için)
-    const skipped    = [...new Set([...(t.skipped_dates||[]).map(String), today])]
-    const extraDates = [...new Set([...(t.extra_dates||[]).map(String), targetDate])]
-    // Anlık UI güncellemesi — Supabase yanıtı bekleme
-    setTasks(p=>({...p,[goalId]:p[goalId].map(x=>x.id===taskId?{...x,skipped_dates:skipped,extra_dates:extraDates}:x)}))
-    // Arka planda kaydet
-    supabase.from('tasks').update({ skipped_dates:skipped, extra_dates:extraDates }).eq('id', taskId)
-    // Toast mesajı
-    const tDow = new Date(targetDate+'T00:00:00').getDay()
-    const isBuffer = t.buffer_day != null || goal?.buffer_day != null
-    showToast(`📅 ${t.name} → ${DOW_FULL[tDow]}'ye aktarıldı`)
-  }
-
   async function endTask(goalId, taskId) {
     const today = todayStr()
     await supabase.from('tasks').update({ ended_at: today }).eq('id', taskId)
@@ -481,14 +453,10 @@ export default function Home() {
               onDelete={() => handleDeleteGoal(goal.id)}
               onReorderTasks={(from,to) => reorderTasks(goal.id, from, to)}
               onShare={() => shareGoal(goal.id)}
-              onWeekClose={goal.is_professional ? (weekNum, weekName, stats) => {
-                setCheckinGoal({ goal, weekNum, weekName, stats })
-              } : null}
               onSkipTask={tid => skipTaskToday(goal.id, tid)}
               onUnskipTask={tid => unskipTask(goal.id, tid)}
               onEndTask={tid => endTask(goal.id, tid)}
               onRestoreTask={tid => restoreTask(goal.id, tid)}
-              onTransferTask={(tid, targetDate) => transferTaskTo(goal.id, tid, targetDate)}
             />
           ))}
         </div>
@@ -547,34 +515,6 @@ export default function Home() {
           user={user}
           onClose={() => setShowProPlan(false)}
           onSaved={() => { setShowProPlan(false); loadAll() }}
-        />
-      )}
-
-      {/* Haftalık Değerlendirme */}
-      {checkinGoal && (
-        <WeeklyCheckin
-          goal={checkinGoal.goal}
-          weekNum={checkinGoal.weekNum}
-          weekName={checkinGoal.weekName}
-          stats={checkinGoal.stats}
-          onComplete={(weekNum) => {
-            const isMilestone = weekNum % 4 === 0
-            setCheckinGoal(null)
-            if (isMilestone) {
-              setMilestoneData({ weekNum, weekName:checkinGoal.weekName, stats:checkinGoal.stats })
-            }
-          }}
-          onClose={() => setCheckinGoal(null)}
-        />
-      )}
-
-      {/* Kilometre Taşı Kutlaması */}
-      {milestoneData && (
-        <MilestoneCelebration
-          weekNum={milestoneData.weekNum}
-          weekName={milestoneData.weekName}
-          stats={milestoneData.stats}
-          onContinue={() => setMilestoneData(null)}
         />
       )}
 
@@ -653,7 +593,7 @@ function GoogleIcon() {
 }
 
 /* ─── Goal Card ──────────────────────────────────────────────────────────── */
-function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabChange, onToggleHist, onToggleTask, onSetQuality, onRemoveLog, onSaveNote, onNoteChange, onEdit, onDelete, isOpen, onToggleOpen, onReorderTasks, onShare, onWeekClose, onSkipTask, onUnskipTask, onEndTask, onRestoreTask, onTransferTask }) {
+function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabChange, onToggleHist, onToggleTask, onSetQuality, onRemoveLog, onSaveNote, onNoteChange, onEdit, onDelete, isOpen, onToggleOpen, onReorderTasks, onShare, onSkipTask, onUnskipTask, onEndTask, onRestoreTask }) {
   const today    = todayStr()
   const dragIdx     = useRef(null)
   const dragOverIdx = useRef(null)
@@ -805,36 +745,6 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
 
             {tab==='tasks' && (
               <div className="anim-tab">
-
-                {/* Pro plan: haftalık sekme navigasyonu */}
-                {isPro && (() => {
-                  const allWeekNums = [...new Set(tasks.map(t=>t.week_number).filter(Boolean))].sort((a,b)=>a-b)
-                  const maxWeeks    = allWeekNums.length
-                  const [proWeekTab, setProWeekTab] = [currentWeekNum, ()=>{}]
-                  return null // sadece hafta nav aşağıda render edilecek
-                })()}
-
-                {isPro ? (
-                  <ProWeekView
-                    tasks={tasks}
-                    logs={logs}
-                    todayLogs={todayLogs}
-                    today={today}
-                    goal={goal}
-                    currentWeekNum={currentWeekNum}
-                    onToggleTask={onToggleTask}
-                    onSetQuality={onSetQuality}
-                    onSkipTask={onSkipTask}
-                    onUnskipTask={onUnskipTask}
-                    onEndTask={onEndTask}
-                    onRestoreTask={onRestoreTask}
-                    openMenuId={openMenuId}
-                    setOpenMenuId={setOpenMenuId}
-                    onWeekClose={onWeekClose}
-                    onTransferTask={onTransferTask}
-                  />
-                ) : (
-                <>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
                   <span style={{ ...css.label }}>Bugünün Görevleri · {todayLogs.length}/{activeTasks(tasks,today).length}</span>
                   <button onClick={async()=>{ for(const l of todayLogs) await supabase.from('daily_logs').delete().eq('id',l.id) }} style={{ background:'none', border:'none', fontSize:12, color:'var(--text3)', cursor:'pointer' }}>Sıfırla</button>
@@ -913,7 +823,6 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                   })}
                 </div>
                 <NoteSection goalId={goal.id} ds={today} notes={notes} noteInputs={noteInputs} onNoteChange={onNoteChange} onSaveNote={onSaveNote} />
-
                 {logs.length > 0 && (
                   <div style={{ marginTop:16 }}>
                     <div style={{ ...css.label, marginBottom:8 }}>Toplam Kalite Dağılımı</div>
@@ -924,8 +833,6 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                     </div>
                     <QBar logs={logs} />
                   </div>
-                )}
-                </>
                 )}
               </div>
             )}
@@ -1124,6 +1031,7 @@ function RiskMeter({ score }) {
 
 /* ─── Analytics Panel ────────────────────────────────────────────────────── */
 function AnalyticsPanel({ goals, tasks, logs }) {
+  const DOW_TR = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
   const today  = todayStr()
   const [expandedId, setExpandedId] = useState(null)
   const [analyticTab, setAnalyticTab] = useState({}) // {goalId: 'overview'|'weekly'|'trend'|'tasks'}
@@ -1398,7 +1306,7 @@ function AnalyticsPanel({ goals, tasks, logs }) {
                         <>
                           <div style={{ ...css.label, marginBottom:8 }}>Gün Bazlı Ortalama</div>
                           <div style={{ display:'flex', gap:4, alignItems:'flex-end', height:64, marginBottom:6 }}>
-                            {[1,2,3,4,5,6,0].map((dow)=>{ const d=DOW_TR[dow]; {
+                            {DOW_TR.map((d,dow)=>{
                               const v = dowAvg[dow]
                               const h = v!==null ? Math.max(6, Math.round(v/100*50)) : 4
                               const isBest  = dow===bestDow  && v!==null
@@ -1538,7 +1446,7 @@ function HeatmapCalendar({ tasks, logs, startDate, totalDays }) {
     return 'rgba(248,113,113,0.18)' // aktif gün ama yapılmadı
   }
 
-  const DOW_SHORT = ['Pt','Sa','Ça','Pe','Cu','Ct','Pz'] // Pzt→Paz (0-6 index'i dışarıdan gelir)
+  const DOW_SHORT = ['Pt','Sa','Ça','Pe','Cu','Ct','Pz']
 
   // İstatistikler
   const activeDays = days.filter(d => d.inGoal && !d.isFuture && d.isActive)
@@ -1617,256 +1525,8 @@ function HeatmapCalendar({ tasks, logs, startDate, totalDays }) {
 }
 
 
-/* ─── Pro Week View ──────────────────────────────────────────────────────── */
-function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onToggleTask, onSetQuality, onSkipTask, onUnskipTask, onEndTask, onRestoreTask, openMenuId, setOpenMenuId, onWeekClose, onTransferTask }) {
-  const allWeekNums = [...new Set(tasks.map(t=>t.week_number).filter(Boolean))].sort((a,b)=>a-b)
-  const [activeWeek, setActiveWeek] = useState(currentWeekNum || allWeekNums[0] || 1)
-  const DOW_FULL_ARR = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi']
-
-  const weekTasks  = tasks.filter(t => t.week_number === activeWeek)
-  const weekName   = weekTasks[0]?.week_name || `${activeWeek}. Hafta`
-  const bufferDow  = goal?.buffer_day ?? null
-  const MON_FIRST  = [1,2,3,4,5,6,0]
-
-  // isCurrent önce tanımla
-  const isCurrent = activeWeek === currentWeekNum
-
-  // Bu haftanın başlangıç/bitiş tarihleri
-  const wStartOfWeek = goal?.start_date ? addDays(goal.start_date,(activeWeek-1)*7) : today
-  const wEndOfWeek   = goal?.start_date ? addDays(goal.start_date,activeWeek*7)     : today
-
-  // Aktif dow'lar: normal görevler + bu haftaya aktarılanlar + telafi günü
-  const rawDows = new Set([
-    ...weekTasks.flatMap(t => t.active_days||[]),
-    ...weekTasks.flatMap(t => (t.extra_dates||[]).filter(d=>d>=wStartOfWeek&&d<wEndOfWeek).map(d=>new Date(d+'T00:00:00').getDay())),
-    // Başka haftadan bu haftaya aktarılan görevler
-    ...tasks.filter(t=>t.week_number!==activeWeek).flatMap(t =>
-      (t.extra_dates||[]).filter(d=>d>=wStartOfWeek&&d<wEndOfWeek).map(d=>new Date(d+'T00:00:00').getDay())
-    ),
-    ...(bufferDow!=null ? [bufferDow] : [])
-  ])
-  const activeDows = MON_FIRST.filter(d => rawDows.has(d))
-
-  return (
-    <div>
-      {/* Hafta sekmeleri */}
-      <div style={{ display:'flex', gap:5, overflowX:'auto', paddingBottom:8, marginBottom:12, WebkitOverflowScrolling:'touch' }}>
-        {allWeekNums.map(wn => {
-          const wTasks = tasks.filter(t=>t.week_number===wn)
-          const wName  = wTasks[0]?.week_name || `${wn}. Hafta`
-          const isCur  = wn===currentWeekNum
-          const isMs   = wn%4===0
-          return (
-            <button key={wn} onClick={()=>setActiveWeek(wn)} style={{
-              flexShrink:0, padding:'6px 12px', borderRadius:10, cursor:'pointer', fontFamily:'inherit',
-              background: wn===activeWeek?'var(--accent)':isCur?'rgba(124,111,247,0.15)':'var(--surface2)',
-              border: `1.5px solid ${wn===activeWeek?'var(--accent)':isCur?'rgba(124,111,247,0.4)':isMs?'rgba(251,191,36,0.35)':'var(--border)'}`,
-              color: wn===activeWeek?'#fff':isCur?'var(--accent)':isMs?'var(--mid)':'var(--text3)',
-              fontSize:11, fontWeight:700, position:'relative', whiteSpace:'nowrap'
-            }}>
-              {wName}
-              {isCur && wn!==activeWeek && <span style={{ position:'absolute', top:-4, right:-4, width:7, height:7, borderRadius:'50%', background:'var(--good)', display:'block' }}/>}
-              {isMs && !isCur && wn!==activeWeek && <span style={{ position:'absolute', top:-4, right:-4, fontSize:9 }}>🏆</span>}
-            </button>
-          )
-        })}
-      </div>
-
-      {/* Haftanın başlığı */}
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
-        <div>
-          <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>{weekName}</div>
-          {isCurrent && <div style={{ fontSize:11, color:'var(--accent)', marginTop:1 }}>● Aktif hafta</div>}
-          {!isCurrent && activeWeek<currentWeekNum && <div style={{ fontSize:11, color:'var(--text3)', marginTop:1 }}>Geçmiş hafta</div>}
-          {!isCurrent && activeWeek>currentWeekNum && <div style={{ fontSize:11, color:'var(--text3)', marginTop:1 }}>Gelecek hafta</div>}
-        </div>
-        {isCurrent && (
-          <span style={{ fontSize:11, color:'var(--text3)' }}>
-            {todayLogs.filter(l=>weekTasks.find(t=>t.id===l.task_id)).length}/{activeTasks(weekTasks,today).length} bugün
-          </span>
-        )}
-      </div>
-
-      {/* Günlere göre grupla — her gün için tam tarihi hesapla */}
-      {activeDows.length===0 ? (
-        <div style={{ textAlign:'center', padding:'20px 0', color:'var(--text3)', fontSize:13 }}>Bu haftada görev yok</div>
-      ) : activeDows.map(dow => {
-        const wStart = addDays(goal?.start_date||today, (activeWeek-1)*7)
-        const wEnd   = addDays(goal?.start_date||today, activeWeek*7)
-
-        // Bu haftanın bu dow'una karşılık gelen tam tarihi bul
-        let dowDate = null
-        for(let i=0;i<7;i++){
-          const d = addDays(wStart, i)
-          if(new Date(d+'T00:00:00').getDay()===dow){ dowDate=d; break }
-        }
-
-        const isBufferDay = bufferDow===dow
-        const isToday     = dowDate===today && isCurrent
-
-        // Normal görevler (active_days bu dow'u içeriyor)
-        const regularTasks = weekTasks.filter(t => t.active_days?.includes(dow) && !t.is_buffer)
-        // Bu güne aktarılmış görevler — extra_dates'te bu günün TAM TARİHİ var
-        const transferredTasks = weekTasks.filter(t => {
-          if (t.active_days?.includes(dow)) return false // zaten burada
-          return (t.extra_dates||[]).map(String).includes(dowDate)
-        })
-        // Yarına aktarılmış görevler — bu görevin extra_dates'i bu tarihi içeriyor
-        // (farklı bir haftadan da gelebilir)
-        const crossTransferred = tasks.filter(t => {
-          if (t.week_number === activeWeek) return false // zaten hafta görevleri yukarıda
-          return (t.extra_dates||[]).map(String).includes(dowDate)
-        })
-        // Buffer görevleri (is_buffer)
-        const bufferTasks = isBufferDay ? weekTasks.filter(t=>t.is_buffer) : []
-
-        const dayTasks = [...regularTasks, ...transferredTasks, ...crossTransferred, ...bufferTasks]
-        if (!dayTasks.length && !isBufferDay) return null
-        if (!dayTasks.length && isBufferDay) {
-          // Telafi günü boşsa da göster (boş placeholder)
-          return (
-            <div key={dow} style={{ marginBottom:10 }}>
-              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6, padding:'0 2px' }}>
-                <span style={{ fontSize:11, fontWeight:700, color:'var(--mid)', textTransform:'uppercase', letterSpacing:'.06em' }}>{DOW_FULL_ARR[dow]}</span>
-                <span style={{ fontSize:10, background:'rgba(251,191,36,0.12)', color:'var(--mid)', borderRadius:99, padding:'1px 8px', fontWeight:700 }}>⚡ Telafi Günü</span>
-                {dowDate && <span style={{ fontSize:10, color:'var(--text3)' }}>{dowDate}</span>}
-                {isToday && <span style={{ fontSize:10, background:'rgba(124,111,247,0.15)', color:'var(--accent)', borderRadius:99, padding:'1px 7px', fontWeight:600 }}>Bugün</span>}
-              </div>
-              <div style={{ padding:'10px 12px', background:'var(--surface2)', borderRadius:'var(--r-md)', fontSize:12, color:'var(--text3)', textAlign:'center' }}>
-                Henüz aktarılan görev yok
-              </div>
-            </div>
-          )
-        }
-        const dayName = DOW_FULL_ARR[dow]
-        const dayDone = isCurrent ? dayTasks.filter(t=>todayLogs.find(l=>l.task_id===t.id)).length : 0
-
-        return (
-          <div key={dow} style={{ marginBottom:10 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:6, padding:'0 2px', flexWrap:'wrap' }}>
-              <span style={{ fontSize:11, fontWeight:700, color: isToday?'var(--accent)':isBufferDay?'var(--mid)':'var(--text3)', textTransform:'uppercase', letterSpacing:'.06em' }}>{dayName}</span>
-              {isBufferDay && <span style={{ fontSize:10, background:'rgba(251,191,36,0.12)', color:'var(--mid)', borderRadius:99, padding:'1px 8px', fontWeight:700 }}>⚡ Telafi Günü</span>}
-              {dowDate && <span style={{ fontSize:10, color:'var(--text3)' }}>{dowDate.slice(5).replace('-','/')}</span>}
-              {(transferredTasks.length>0||crossTransferred.length>0) && <span style={{ fontSize:10, background:'rgba(74,222,128,0.1)', color:'var(--good)', borderRadius:99, padding:'1px 7px', fontWeight:600 }}>+{transferredTasks.length+crossTransferred.length} aktarıldı</span>}
-              {isToday && <span style={{ fontSize:10, background:'rgba(124,111,247,0.15)', color:'var(--accent)', borderRadius:99, padding:'1px 7px', fontWeight:600 }}>Bugün · {dayDone}/{dayTasks.length}</span>}
-            </div>
-            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-              {dayTasks.map((t,ti) => {
-                const tStatus      = isCurrent ? taskStatus(t, today) : (activeWeek<currentWeekNum?'ended':'active')
-                const isActive     = tStatus==='active'
-                const isSkipped    = tStatus==='skipped'
-                const isEnded      = tStatus==='ended'
-                const isTransferred = dowDate && (t.extra_dates||[]).map(String).includes(dowDate) && !t.active_days?.includes(dow)
-                const log = todayLogs.find(l=>l.task_id===t.id)
-                const q   = log?.quality
-                const qBg    = { good:'var(--good-bg)', mid:'var(--mid-bg)', bad:'var(--bad-bg)' }
-                const qBorder= { good:'rgba(74,222,128,0.3)', mid:'rgba(251,191,36,0.3)', bad:'rgba(248,113,113,0.3)' }
-                const cardBg     = isEnded?'transparent':isSkipped?'rgba(251,191,36,0.04)':q?qBg[q]:'var(--surface2)'
-                const cardBorder = isEnded?'var(--border)':isSkipped?'rgba(251,191,36,0.25)':q?qBorder[q]:'var(--border)'
-                return (
-                  <div key={t.id} style={{ background:cardBg, border:`1.5px solid ${cardBorder}`, borderRadius:'var(--r-md)', opacity:isEnded?0.4:isSkipped?0.6:1 }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 12px' }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:10, flex:1, cursor:isActive?'pointer':'default' }} onClick={()=>isActive&&onToggleTask(t.id)}>
-                        <div style={{ width:20, height:20, borderRadius:5, border:`2px solid ${q?`var(--${q})`:isActive?'var(--border2)':'var(--border)'}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, flexShrink:0, background:q?qBg[q]:'transparent', color:`var(--${q||'text3'})` }}>
-                          {isEnded?'■':isSkipped?'–':q?{good:'✓',mid:'−',bad:'✕'}[q]:''}
-                        </div>
-                        <div style={{ flex:1, fontSize:13, fontWeight:500, textDecoration:(q||isEnded)?'line-through':'none', color:q||isSkipped||isEnded?'var(--text3)':'var(--text)' }}>
-                          {t.name}
-                          {isSkipped && <span style={{ fontSize:10, color:'var(--mid)', marginLeft:6 }}>atlandı</span>}
-                          {isTransferred && <span style={{ fontSize:10, color:'var(--good)', marginLeft:6, background:'rgba(74,222,128,0.1)', padding:'1px 6px', borderRadius:99 }}>📅 aktarıldı</span>}
-                          {transferredTasks.includes(t) && <span style={{ fontSize:10, color:'var(--accent)', marginLeft:6 }}>📅 aktarıldı</span>}
-                          {t.is_buffer && <span style={{ fontSize:10, color:'var(--mid)', marginLeft:6 }}>⚡</span>}
-                        </div>
-                        {q && isActive && <span style={{ fontSize:10, fontWeight:700, color:`var(--${q})`, background:qBg[q], padding:'2px 7px', borderRadius:99 }}>{{good:'İyi',mid:'Orta',bad:'Kötü'}[q]}</span>}
-                      </div>
-                      {isCurrent && (
-                        <TaskMenu taskId={t.id} status={tStatus} openId={openMenuId} setOpenId={setOpenMenuId}
-                          onSkip={()=>onSkipTask(t.id)} onUnskip={()=>onUnskipTask(t.id)}
-                          onEnd={()=>{ if(confirm(`"${t.name}" sonlandırılsın mı?`)) onEndTask(t.id) }}
-                          onRestore={()=>onRestoreTask(t.id)}
-                          isPro={true}
-                          bufferDay={goal?.buffer_day}
-                          goalStartDate={goal?.start_date}
-                          activeWeekNum={activeWeek}
-                          onTransferToTomorrow={onTransferTask ? ()=>{
-                            const tomorrow = addDays(today, 1)
-                            onTransferTask(t.id, tomorrow)
-                          } : null}
-                          onTransferToBuffer={onTransferTask && goal?.buffer_day!=null ? ()=>{
-                            // Bu haftanın telafi gününü bul
-                            const wStart = new Date(addDays(goal.start_date,(activeWeek-1)*7)+'T00:00:00')
-                            const bufDow = goal.buffer_day
-                            // Haftanın başından itibaren telafi gününü bul
-                            let bufDate = null
-                            for(let i=0;i<7;i++){
-                              const d = new Date(wStart); d.setDate(d.getDate()+i)
-                              if(d.getDay()===bufDow){ bufDate=d.toISOString().slice(0,10); break }
-                            }
-                            if(bufDate) onTransferTask(t.id, bufDate)
-                          } : null}
-                        />
-                      )}
-                    </div>
-                    {q && isActive && (
-                      <div style={{ display:'flex', gap:6, padding:'0 12px 10px' }}>
-                        {['good','mid','bad'].map(qv=>(
-                          <button key={qv} onClick={()=>onSetQuality(t.id,qv)} style={{ flex:1, padding:'6px 4px', borderRadius:'var(--r-md)', border:`1.5px solid ${q===qv?`var(--${qv})`:'var(--border)'}`, background:q===qv?qBg[qv]:'transparent', color:q===qv?`var(--${qv})`:'var(--text3)', fontSize:11, fontWeight:700, cursor:'pointer' }}>
-                            {{good:'İyi',mid:'Orta',bad:'Kötü'}[qv]}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        )
-      })}
-
-      {/* Haftalık değerlendirme butonu — aktif haftanın altında */}
-      {isCurrent && onWeekClose && (
-        <div style={{ marginTop:16, background:'rgba(124,111,247,0.07)', border:'1.5px solid rgba(124,111,247,0.2)', borderRadius:14, padding:'13px 14px' }}>
-          <div style={{ fontSize:12, color:'var(--text3)', marginBottom:10 }}>
-            📋 <b style={{ color:'var(--text2)' }}>{weekName}</b> — bu haftayı değerlendirmeye hazır mısın?
-          </div>
-          <button
-            onClick={()=>{
-              const wStart = addDays(goal.start_date,(activeWeek-1)*7)
-              const wEnd   = addDays(goal.start_date,activeWeek*7)
-              const weekLogs  = logs.filter(l=>l.log_date>=wStart&&l.log_date<wEnd)
-              const wTasks    = tasks.filter(t=>t.week_number===activeWeek)
-              const dayScores = Array.from({length:7},(_,i)=>{
-                const ds=addDays(goal.start_date,(activeWeek-1)*7+i)
-                return Math.round(dayScore(wTasks,weekLogs,ds)*100)
-              })
-              const activeDays    = dayScores.filter(s=>s>0).length
-              const total         = wTasks.length*7
-              const completionPct = total>0?Math.round(weekLogs.length/total*100):0
-              const qs = weekLogs.length?Math.round(weekLogs.reduce((s,l)=>s+(l.quality==='good'?100:l.quality==='mid'?60:30),0)/weekLogs.length):0
-              const qualityLabel  = qs>=70?'İyi':qs>=40?'Orta':'Düşük'
-              const streak        = getStreak(wTasks,weekLogs,goal.start_date)
-              onWeekClose(activeWeek, weekName, { completionPct, activeDays, dailyScores:dayScores, qualityLabel, streak })
-            }}
-            style={{ width:'100%', padding:'12px', background:'var(--accent)', border:'none', borderRadius:12, color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}
-          >
-            Haftayı Değerlendir ve Kapat →
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}
-
-
 /* ─── Task Menu ──────────────────────────────────────────────────────────── */
-const menuBtn = {
-  display:'flex', alignItems:'center', gap:8, width:'100%', padding:'8px 10px',
-  background:'none', border:'none', borderRadius:9, color:'var(--text2)', fontSize:13,
-  fontWeight:500, cursor:'pointer', fontFamily:'inherit', textAlign:'left'
-}
-
-function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, onRestore, isPro, onTransferToTomorrow, onTransferToBuffer, bufferDay }) {
+function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, onRestore }) {
   const isOpen    = openId === taskId
   const isActive  = status === 'active'
   const isSkipped = status === 'skipped'
@@ -1900,21 +1560,7 @@ function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, 
           borderRadius:14, padding:6, zIndex:500, minWidth:192,
           boxShadow:'0 8px 32px rgba(0,0,0,0.45)'
         }}>
-          {/* Pro plan transfer seçenekleri */}
-          {isPro && isActive && onTransferToTomorrow && (
-            <>
-              <button onClick={()=>{setOpenId(null);onTransferToTomorrow()}} style={menuBtn}>
-                <span style={{ fontSize:15 }}>📅</span> Yarına aktar
-              </button>
-              {onTransferToBuffer && (
-                <button onClick={()=>{setOpenId(null);onTransferToBuffer()}} style={menuBtn}>
-                  <span style={{ fontSize:15 }}>⚡</span> Telafi gününe aktar
-                </button>
-              )}
-              <div style={{ height:1, background:'var(--border)', margin:'4px 0' }}/>
-            </>
-          )}
-          {(isActive || isInactive) && !isPro && (
+          {(isActive || isInactive) && (
             <button onClick={()=>{setOpenId(null);onSkip()}} style={menuBtn}>
               <span style={{ fontSize:15 }}>⏭</span> Bugün atla
             </button>
@@ -1926,7 +1572,7 @@ function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, 
           )}
           {!isEnded && (
             <>
-              {!isPro && <div style={{ height:1, background:'var(--border)', margin:'4px 0' }}/>}
+              <div style={{ height:1, background:'var(--border)', margin:'4px 0' }}/>
               <button onClick={()=>{setOpenId(null);onEnd()}} style={{ ...menuBtn, color:'var(--bad)' }}>
                 <span style={{ fontSize:15 }}>⏹</span> Görevi sonlandır
               </button>
@@ -1943,8 +1589,14 @@ function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, 
   )
 }
 
+const menuBtn = {
+  display:'flex', alignItems:'center', gap:8, width:'100%', padding:'8px 10px',
+  background:'none', border:'none', borderRadius:9, color:'var(--text2)', fontSize:13,
+  fontWeight:500, cursor:'pointer', fontFamily:'inherit', textAlign:'left'
+}
 
 /* ─── Goal Modal ─────────────────────────────────────────────────────────── */
+const DOW_TR  = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
 
 const GOAL_TEMPLATES = [
   { icon:'🏃', name:'30 günde koşu alışkanlığı', days:30,
@@ -2107,7 +1759,7 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
                       Hangi günler aktif? {t.active_days.length===0 && <span style={{ color:'var(--accent)', fontWeight:500, textTransform:'none', letterSpacing:'normal', fontSize:11 }}>· her gün (varsayılan)</span>}
                     </div>
                     <div style={{ display:'flex', gap:6 }}>
-                      {[1,2,3,4,5,6,0].map((dow)=>{ const label=DOW_TR[dow];
+                      {DOW_TR.map((label,dow)=>{
                         const on = t.active_days.includes(dow)
                         return (
                           <button key={dow} onClick={()=>toggleDay(i,dow)} style={{
