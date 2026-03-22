@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { createClient } from '../lib/supabase'
 import ProfilePanel from '../components/ProfilePanel'
 import SharedGoalsPanel from '../components/SharedGoalsPanel'
+import ProfessionalPlanModal from '../components/ProfessionalPlanModal'
 
 /* ─── Constants ──────────────────────────────────────────────────────────── */
 const Q      = { good: 1.0, mid: 0.6, bad: 0.3 }
@@ -180,6 +181,7 @@ export default function Home() {
   const [mainTab,    setMainTab]    = useState('personal')
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [expandedGoal,   setExpandedGoal]   = useState(null)
+  const [showProPlan,    setShowProPlan]    = useState(false)
 
   /* Auth */
   useEffect(() => {
@@ -481,12 +483,18 @@ export default function Home() {
 
       {/* FAB — sadece kişisel sekmede */}
       {mainTab==='personal' && (
-        <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', zIndex:50 }}>
+        <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', zIndex:50, display:'flex', gap:10 }}>
           <button
             onClick={() => { setEditGoal(null); setShowModal(true) }}
-            style={{ padding:'13px 28px', background:'var(--accent)', border:'none', borderRadius:99, color:'#fff', fontSize:14, fontWeight:700, boxShadow:'0 4px 24px rgba(124,111,247,0.4)', display:'flex', alignItems:'center', gap:8 }}
+            style={{ padding:'13px 22px', background:'var(--accent)', border:'none', borderRadius:99, color:'#fff', fontSize:14, fontWeight:700, boxShadow:'0 4px 24px rgba(124,111,247,0.4)', display:'flex', alignItems:'center', gap:7, whiteSpace:'nowrap' }}
           >
-            + Yeni Hedef
+            + Hedef
+          </button>
+          <button
+            onClick={() => setShowProPlan(true)}
+            style={{ padding:'13px 22px', background:'var(--surface)', border:'1.5px solid var(--border)', borderRadius:99, color:'var(--text)', fontSize:14, fontWeight:700, boxShadow:'0 4px 24px rgba(0,0,0,0.3)', display:'flex', alignItems:'center', gap:7, whiteSpace:'nowrap' }}
+          >
+            📋 Pro Plan
           </button>
         </div>
       )}
@@ -498,6 +506,15 @@ export default function Home() {
           tasks={editGoal ? (tasks[editGoal.id]||[]) : []}
           onSave={handleSaveGoal}
           onClose={() => { setShowModal(false); setEditGoal(null) }}
+        />
+      )}
+
+      {/* Profesyonel Plan Modal */}
+      {showProPlan && (
+        <ProfessionalPlanModal
+          user={user}
+          onClose={() => setShowProPlan(false)}
+          onSaved={() => { setShowProPlan(false); loadAll() }}
         />
       )}
 
@@ -603,6 +620,17 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
   const todayLogs= logs.filter(l=>l.log_date===today)
   const doneTodayCount = todayLogs.length
 
+  // Profesyonel plan: görevlerin week_number'ı varsa haftalı yapı
+  const isPro = tasks.some(t=>t.week_number)
+  const todayDow = new Date().getDay()
+  // Hangi haftadayız? (hedef başlangıcından geçen gün sayısına göre)
+  const currentWeek = isPro ? Math.min(
+    Math.max(0, Math.floor(elapsed/7)),
+    Math.max(...tasks.map(t=>t.week_number||1)) - 1
+  ) : null
+  const currentWeekNum = currentWeek !== null ? currentWeek + 1 : null
+  const currentWeekName = isPro ? (tasks.find(t=>t.week_number===currentWeekNum)?.week_name || `${currentWeekNum}. Hafta`) : null
+
   let avgSum=0,avgCnt=0
   for (let i=0;i<elapsed;i++) {
     const ds=addDays(goal.start_date,i)
@@ -641,6 +669,7 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
           <div style={{ flex:1 }}>
             <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6 }}>
               <span style={{ fontSize:15, fontWeight:700, color:'var(--text)' }}>{goal.name}</span>
+              {isPro && currentWeekName && <span style={{ fontSize:11, background:'rgba(124,111,247,0.12)', border:'1.5px solid rgba(124,111,247,0.3)', color:'var(--accent)', borderRadius:99, padding:'1px 8px' }}>📋 {currentWeekName}</span>}
               {streak>=3 && <span style={{ fontSize:11, background:'rgba(251,146,60,0.12)', border:'1.5px solid rgba(251,146,60,0.3)', color:'var(--fire)', borderRadius:99, padding:'1px 8px' }}>🔥{streak}</span>}
             </div>
             <div style={{ height:4, background:'var(--surface2)', borderRadius:99, overflow:'hidden', marginBottom:6 }}>
