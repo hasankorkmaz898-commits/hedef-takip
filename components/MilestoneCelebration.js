@@ -1,3 +1,5 @@
+import React from 'react'
+
 const s = {
   overlay: { position:'fixed', inset:0, background:'rgba(10,12,18,0.95)', backdropFilter:'blur(8px)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:16 },
   card:    { background:'var(--surface)', border:'1.5px solid rgba(124,111,247,0.4)', borderRadius:24, padding:28, width:'100%', maxWidth:400, textAlign:'center' },
