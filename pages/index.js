@@ -795,6 +795,7 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                     logs={logs}
                     todayLogs={todayLogs}
                     today={today}
+                    goal={goal}
                     currentWeekNum={currentWeekNum}
                     onToggleTask={onToggleTask}
                     onSetQuality={onSetQuality}
@@ -804,6 +805,7 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                     onRestoreTask={onRestoreTask}
                     openMenuId={openMenuId}
                     setOpenMenuId={setOpenMenuId}
+                    onWeekClose={onWeekClose}
                   />
                 ) : (
                 <>
@@ -885,40 +887,6 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                   })}
                 </div>
                 <NoteSection goalId={goal.id} ds={today} notes={notes} noteInputs={noteInputs} onNoteChange={onNoteChange} onSaveNote={onSaveNote} />
-
-                {/* Pro plan: haftayı kapat butonu */}
-                {isPro && onWeekClose && currentWeekNum && (
-                  <div style={{ marginTop:14, background:'rgba(124,111,247,0.07)', border:'1.5px solid rgba(124,111,247,0.2)', borderRadius:14, padding:'12px 14px' }}>
-                    <div style={{ fontSize:12, fontWeight:600, color:'var(--text2)', marginBottom:10 }}>
-                      📋 {currentWeekName} · Bu haftayı tamamladın mı?
-                    </div>
-                    <button
-                      onClick={()=>{
-                        const weekLogs = logs.filter(l=>{
-                          const wStart = addDays(goal.start_date,(currentWeekNum-1)*7)
-                          const wEnd   = addDays(goal.start_date,currentWeekNum*7)
-                          return l.log_date>=wStart && l.log_date<wEnd
-                        })
-                        const weekTasks = tasks.filter(t=>t.week_number===currentWeekNum)
-                        const total     = weekTasks.length*7
-                        const done      = weekLogs.length
-                        const dayScores = Array.from({length:7},(_,i)=>{
-                          const ds = addDays(goal.start_date,(currentWeekNum-1)*7+i)
-                          return Math.round(dayScore(weekTasks,weekLogs,ds)*100)
-                        })
-                        const activeDays = dayScores.filter(s=>s>0).length
-                        const completionPct = total>0?Math.round(done/total*100):0
-                        const qs = weekLogs.length?Math.round(weekLogs.reduce((s,l)=>s+(l.quality==='good'?100:l.quality==='mid'?60:30),0)/weekLogs.length):0
-                        const qualityLabel = qs>=70?'İyi':qs>=40?'Orta':'Düşük'
-                        const streak = getStreak(weekTasks,weekLogs,goal.start_date)
-                        onWeekClose(currentWeekNum, currentWeekName, { completionPct, activeDays, dailyScores:dayScores, qualityLabel, streak })
-                      }}
-                      style={{ width:'100%', padding:'11px', background:'var(--accent)', border:'none', borderRadius:12, color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}
-                    >
-                      Haftayı Değerlendir ve Kapat →
-                    </button>
-                  </div>
-                )}
 
                 {logs.length > 0 && (
                   <div style={{ marginTop:16 }}>
@@ -1625,7 +1593,7 @@ function HeatmapCalendar({ tasks, logs, startDate, totalDays }) {
 
 
 /* ─── Pro Week View ──────────────────────────────────────────────────────── */
-function ProWeekView({ tasks, logs, todayLogs, today, currentWeekNum, onToggleTask, onSetQuality, onSkipTask, onUnskipTask, onEndTask, onRestoreTask, openMenuId, setOpenMenuId }) {
+function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onToggleTask, onSetQuality, onSkipTask, onUnskipTask, onEndTask, onRestoreTask, openMenuId, setOpenMenuId, onWeekClose }) {
   const allWeekNums = [...new Set(tasks.map(t=>t.week_number).filter(Boolean))].sort((a,b)=>a-b)
   const [activeWeek, setActiveWeek] = useState(currentWeekNum || allWeekNums[0] || 1)
   const DOW_FULL = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi']
@@ -1745,6 +1713,37 @@ function ProWeekView({ tasks, logs, todayLogs, today, currentWeekNum, onToggleTa
           </div>
         )
       })}
+
+      {/* Haftalık değerlendirme butonu — aktif haftanın altında */}
+      {isCurrent && onWeekClose && (
+        <div style={{ marginTop:16, background:'rgba(124,111,247,0.07)', border:'1.5px solid rgba(124,111,247,0.2)', borderRadius:14, padding:'13px 14px' }}>
+          <div style={{ fontSize:12, color:'var(--text3)', marginBottom:10 }}>
+            📋 <b style={{ color:'var(--text2)' }}>{weekName}</b> — bu haftayı değerlendirmeye hazır mısın?
+          </div>
+          <button
+            onClick={()=>{
+              const wStart = addDays(goal.start_date,(activeWeek-1)*7)
+              const wEnd   = addDays(goal.start_date,activeWeek*7)
+              const weekLogs  = logs.filter(l=>l.log_date>=wStart&&l.log_date<wEnd)
+              const wTasks    = tasks.filter(t=>t.week_number===activeWeek)
+              const dayScores = Array.from({length:7},(_,i)=>{
+                const ds=addDays(goal.start_date,(activeWeek-1)*7+i)
+                return Math.round(dayScore(wTasks,weekLogs,ds)*100)
+              })
+              const activeDays    = dayScores.filter(s=>s>0).length
+              const total         = wTasks.length*7
+              const completionPct = total>0?Math.round(weekLogs.length/total*100):0
+              const qs = weekLogs.length?Math.round(weekLogs.reduce((s,l)=>s+(l.quality==='good'?100:l.quality==='mid'?60:30),0)/weekLogs.length):0
+              const qualityLabel  = qs>=70?'İyi':qs>=40?'Orta':'Düşük'
+              const streak        = getStreak(wTasks,weekLogs,goal.start_date)
+              onWeekClose(activeWeek, weekName, { completionPct, activeDays, dailyScores:dayScores, qualityLabel, streak })
+            }}
+            style={{ width:'100%', padding:'12px', background:'var(--accent)', border:'none', borderRadius:12, color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}
+          >
+            Haftayı Değerlendir ve Kapat →
+          </button>
+        </div>
+      )}
     </div>
   )
 }
