@@ -780,6 +780,33 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
 
             {tab==='tasks' && (
               <div className="anim-tab">
+
+                {/* Pro plan: haftalık sekme navigasyonu */}
+                {isPro && (() => {
+                  const allWeekNums = [...new Set(tasks.map(t=>t.week_number).filter(Boolean))].sort((a,b)=>a-b)
+                  const maxWeeks    = allWeekNums.length
+                  const [proWeekTab, setProWeekTab] = [currentWeekNum, ()=>{}]
+                  return null // sadece hafta nav aşağıda render edilecek
+                })()}
+
+                {isPro ? (
+                  <ProWeekView
+                    tasks={tasks}
+                    logs={logs}
+                    todayLogs={todayLogs}
+                    today={today}
+                    currentWeekNum={currentWeekNum}
+                    onToggleTask={onToggleTask}
+                    onSetQuality={onSetQuality}
+                    onSkipTask={onSkipTask}
+                    onUnskipTask={onUnskipTask}
+                    onEndTask={onEndTask}
+                    onRestoreTask={onRestoreTask}
+                    openMenuId={openMenuId}
+                    setOpenMenuId={setOpenMenuId}
+                  />
+                ) : (
+                <>
                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
                   <span style={{ ...css.label }}>Bugünün Görevleri · {todayLogs.length}/{activeTasks(tasks,today).length}</span>
                   <button onClick={async()=>{ for(const l of todayLogs) await supabase.from('daily_logs').delete().eq('id',l.id) }} style={{ background:'none', border:'none', fontSize:12, color:'var(--text3)', cursor:'pointer' }}>Sıfırla</button>
@@ -903,6 +930,8 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                     </div>
                     <QBar logs={logs} />
                   </div>
+                )}
+                </>
                 )}
               </div>
             )}
@@ -1594,6 +1623,131 @@ function HeatmapCalendar({ tasks, logs, startDate, totalDays }) {
   )
 }
 
+
+/* ─── Pro Week View ──────────────────────────────────────────────────────── */
+function ProWeekView({ tasks, logs, todayLogs, today, currentWeekNum, onToggleTask, onSetQuality, onSkipTask, onUnskipTask, onEndTask, onRestoreTask, openMenuId, setOpenMenuId }) {
+  const allWeekNums = [...new Set(tasks.map(t=>t.week_number).filter(Boolean))].sort((a,b)=>a-b)
+  const [activeWeek, setActiveWeek] = useState(currentWeekNum || allWeekNums[0] || 1)
+  const DOW_FULL = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi']
+
+  const weekTasks = tasks.filter(t => t.week_number === activeWeek)
+  const weekName  = weekTasks[0]?.week_name || `${activeWeek}. Hafta`
+
+  // O haftanın aktif günleri
+  const activeDows = [...new Set(weekTasks.flatMap(t => t.active_days||[]))].sort()
+
+  // Bugün bu haftada mı?
+  const isCurrent = activeWeek === currentWeekNum
+
+  return (
+    <div>
+      {/* Hafta sekmeleri */}
+      <div style={{ display:'flex', gap:5, overflowX:'auto', paddingBottom:8, marginBottom:12, WebkitOverflowScrolling:'touch' }}>
+        {allWeekNums.map(wn => {
+          const wTasks = tasks.filter(t=>t.week_number===wn)
+          const wName  = wTasks[0]?.week_name || `${wn}. Hafta`
+          const isCur  = wn===currentWeekNum
+          const isMs   = wn%4===0
+          return (
+            <button key={wn} onClick={()=>setActiveWeek(wn)} style={{
+              flexShrink:0, padding:'6px 12px', borderRadius:10, cursor:'pointer', fontFamily:'inherit',
+              background: wn===activeWeek?'var(--accent)':isCur?'rgba(124,111,247,0.15)':'var(--surface2)',
+              border: `1.5px solid ${wn===activeWeek?'var(--accent)':isCur?'rgba(124,111,247,0.4)':isMs?'rgba(251,191,36,0.35)':'var(--border)'}`,
+              color: wn===activeWeek?'#fff':isCur?'var(--accent)':isMs?'var(--mid)':'var(--text3)',
+              fontSize:11, fontWeight:700, position:'relative', whiteSpace:'nowrap'
+            }}>
+              {wName}
+              {isCur && wn!==activeWeek && <span style={{ position:'absolute', top:-4, right:-4, width:7, height:7, borderRadius:'50%', background:'var(--good)', display:'block' }}/>}
+              {isMs && !isCur && wn!==activeWeek && <span style={{ position:'absolute', top:-4, right:-4, fontSize:9 }}>🏆</span>}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Haftanın başlığı */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+        <div>
+          <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>{weekName}</div>
+          {isCurrent && <div style={{ fontSize:11, color:'var(--accent)', marginTop:1 }}>● Aktif hafta</div>}
+          {!isCurrent && activeWeek<currentWeekNum && <div style={{ fontSize:11, color:'var(--text3)', marginTop:1 }}>Geçmiş hafta</div>}
+          {!isCurrent && activeWeek>currentWeekNum && <div style={{ fontSize:11, color:'var(--text3)', marginTop:1 }}>Gelecek hafta</div>}
+        </div>
+        {isCurrent && (
+          <span style={{ fontSize:11, color:'var(--text3)' }}>
+            {todayLogs.filter(l=>weekTasks.find(t=>t.id===l.task_id)).length}/{activeTasks(weekTasks,today).length} bugün
+          </span>
+        )}
+      </div>
+
+      {/* Günlere göre grupla */}
+      {activeDows.length===0 ? (
+        <div style={{ textAlign:'center', padding:'20px 0', color:'var(--text3)', fontSize:13 }}>Bu haftada görev yok</div>
+      ) : activeDows.map(dow => {
+        const dayTasks = weekTasks.filter(t => t.active_days?.includes(dow) && !t.is_buffer)
+        if (!dayTasks.length) return null
+        const [dayOpen, setDayOpen] = [true, ()=>{}] // hep açık
+        const dayName = DOW_FULL[dow]
+        const dayDone = isCurrent ? dayTasks.filter(t=>todayLogs.find(l=>l.task_id===t.id)).length : 0
+        const isToday = new Date().getDay()===dow && isCurrent
+
+        return (
+          <div key={dow} style={{ marginBottom:10 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6, padding:'0 2px' }}>
+              <span style={{ fontSize:11, fontWeight:700, color: isToday?'var(--accent)':'var(--text3)', textTransform:'uppercase', letterSpacing:'.06em' }}>{dayName}</span>
+              {isToday && <span style={{ fontSize:10, background:'rgba(124,111,247,0.15)', color:'var(--accent)', borderRadius:99, padding:'1px 7px', fontWeight:600 }}>Bugün · {dayDone}/{dayTasks.length}</span>}
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+              {dayTasks.map((t,ti) => {
+                const tStatus  = isCurrent ? taskStatus(t, today) : (activeWeek<currentWeekNum?'ended':'active')
+                const isActive = tStatus==='active'
+                const isSkipped= tStatus==='skipped'
+                const isEnded  = tStatus==='ended'
+                const log = todayLogs.find(l=>l.task_id===t.id)
+                const q   = log?.quality
+                const qBg    = { good:'var(--good-bg)', mid:'var(--mid-bg)', bad:'var(--bad-bg)' }
+                const qBorder= { good:'rgba(74,222,128,0.3)', mid:'rgba(251,191,36,0.3)', bad:'rgba(248,113,113,0.3)' }
+                const cardBg     = isEnded?'transparent':isSkipped?'rgba(251,191,36,0.04)':q?qBg[q]:'var(--surface2)'
+                const cardBorder = isEnded?'var(--border)':isSkipped?'rgba(251,191,36,0.25)':q?qBorder[q]:'var(--border)'
+                return (
+                  <div key={t.id} style={{ background:cardBg, border:`1.5px solid ${cardBorder}`, borderRadius:'var(--r-md)', opacity:isEnded?0.4:isSkipped?0.6:1 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:8, padding:'10px 12px' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:10, flex:1, cursor:isActive?'pointer':'default' }} onClick={()=>isActive&&onToggleTask(t.id)}>
+                        <div style={{ width:20, height:20, borderRadius:5, border:`2px solid ${q?`var(--${q})`:isActive?'var(--border2)':'var(--border)'}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, flexShrink:0, background:q?qBg[q]:'transparent', color:`var(--${q||'text3'})` }}>
+                          {isEnded?'■':isSkipped?'–':q?{good:'✓',mid:'−',bad:'✕'}[q]:''}
+                        </div>
+                        <div style={{ flex:1, fontSize:13, fontWeight:500, textDecoration:(q||isEnded)?'line-through':'none', color:q||isSkipped||isEnded?'var(--text3)':'var(--text)' }}>
+                          {t.name}
+                          {isSkipped && <span style={{ fontSize:10, color:'var(--mid)', marginLeft:6 }}>atlandı</span>}
+                        </div>
+                        {q && isActive && <span style={{ fontSize:10, fontWeight:700, color:`var(--${q})`, background:qBg[q], padding:'2px 7px', borderRadius:99 }}>{{good:'İyi',mid:'Orta',bad:'Kötü'}[q]}</span>}
+                      </div>
+                      {isCurrent && (
+                        <TaskMenu taskId={t.id} status={tStatus} openId={openMenuId} setOpenId={setOpenMenuId}
+                          onSkip={()=>onSkipTask(t.id)} onUnskip={()=>onUnskipTask(t.id)}
+                          onEnd={()=>{ if(confirm(`"${t.name}" sonlandırılsın mı?`)) onEndTask(t.id) }}
+                          onRestore={()=>onRestoreTask(t.id)}
+                        />
+                      )}
+                    </div>
+                    {q && isActive && (
+                      <div style={{ display:'flex', gap:6, padding:'0 12px 10px' }}>
+                        {['good','mid','bad'].map(qv=>(
+                          <button key={qv} onClick={()=>onSetQuality(t.id,qv)} style={{ flex:1, padding:'6px 4px', borderRadius:'var(--r-md)', border:`1.5px solid ${q===qv?`var(--${qv})`:'var(--border)'}`, background:q===qv?qBg[qv]:'transparent', color:q===qv?`var(--${qv})`:'var(--text3)', fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                            {{good:'İyi',mid:'Orta',bad:'Kötü'}[qv]}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 /* ─── Task Menu ──────────────────────────────────────────────────────────── */
 function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, onRestore }) {
