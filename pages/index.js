@@ -32,6 +32,8 @@ const daysElapsed= s   => Math.max(0, Math.floor((new Date()-new Date(s))/864000
 const daysLeft   = (s,t) => Math.max(0, t-daysElapsed(s))
 
 function taskActiveOnDay(task, ds) {
+  // extra_dates: bu tarihte özel olarak aktif (ertesi güne/telafi gününe aktarıldı)
+  if (task.extra_dates?.includes(ds)) return true
   // Görev oluşturulmadan önceki günlerde aktif değil
   if (task.created_at) {
     const taskDate = task.created_at.slice(0,10)
@@ -352,6 +354,19 @@ export default function Home() {
     setTasks(p=>({...p,[goalId]:p[goalId].map(x=>x.id===taskId?{...x,skipped_dates:skipped}:x)}))
   }
 
+  async function transferTaskTo(goalId, taskId, targetDate) {
+    // 1. Bugünü skipped_dates'e ekle
+    // 2. targetDate'i extra_dates'e ekle
+    const today = todayStr()
+    const t = (tasks[goalId]||[]).find(x=>x.id===taskId)
+    if (!t) return
+    const skipped    = [...new Set([...(t.skipped_dates||[]), today])]
+    const extraDates = [...new Set([...(t.extra_dates||[]), targetDate])]
+    await supabase.from('tasks').update({ skipped_dates:skipped, extra_dates:extraDates }).eq('id', taskId)
+    setTasks(p=>({...p,[goalId]:p[goalId].map(x=>x.id===taskId?{...x,skipped_dates:skipped,extra_dates:extraDates}:x)}))
+    showToast(`📅 Görev ${targetDate} tarihine taşındı`)
+  }
+
   async function endTask(goalId, taskId) {
     const today = todayStr()
     await supabase.from('tasks').update({ ended_at: today }).eq('id', taskId)
@@ -464,6 +479,7 @@ export default function Home() {
               onUnskipTask={tid => unskipTask(goal.id, tid)}
               onEndTask={tid => endTask(goal.id, tid)}
               onRestoreTask={tid => restoreTask(goal.id, tid)}
+              onTransferTask={(tid, targetDate) => transferTaskTo(goal.id, tid, targetDate)}
             />
           ))}
         </div>
@@ -628,7 +644,7 @@ function GoogleIcon() {
 }
 
 /* ─── Goal Card ──────────────────────────────────────────────────────────── */
-function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabChange, onToggleHist, onToggleTask, onSetQuality, onRemoveLog, onSaveNote, onNoteChange, onEdit, onDelete, isOpen, onToggleOpen, onReorderTasks, onShare, onWeekClose, onSkipTask, onUnskipTask, onEndTask, onRestoreTask }) {
+function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabChange, onToggleHist, onToggleTask, onSetQuality, onRemoveLog, onSaveNote, onNoteChange, onEdit, onDelete, isOpen, onToggleOpen, onReorderTasks, onShare, onWeekClose, onSkipTask, onUnskipTask, onEndTask, onRestoreTask, onTransferTask }) {
   const today    = todayStr()
   const dragIdx     = useRef(null)
   const dragOverIdx = useRef(null)
@@ -806,6 +822,7 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                     openMenuId={openMenuId}
                     setOpenMenuId={setOpenMenuId}
                     onWeekClose={onWeekClose}
+                    onTransferTask={onTransferTask}
                   />
                 ) : (
                 <>
@@ -1593,7 +1610,7 @@ function HeatmapCalendar({ tasks, logs, startDate, totalDays }) {
 
 
 /* ─── Pro Week View ──────────────────────────────────────────────────────── */
-function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onToggleTask, onSetQuality, onSkipTask, onUnskipTask, onEndTask, onRestoreTask, openMenuId, setOpenMenuId, onWeekClose }) {
+function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onToggleTask, onSetQuality, onSkipTask, onUnskipTask, onEndTask, onRestoreTask, openMenuId, setOpenMenuId, onWeekClose, onTransferTask }) {
   const allWeekNums = [...new Set(tasks.map(t=>t.week_number).filter(Boolean))].sort((a,b)=>a-b)
   const [activeWeek, setActiveWeek] = useState(currentWeekNum || allWeekNums[0] || 1)
   const DOW_FULL = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi']
@@ -1694,6 +1711,26 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
                           onSkip={()=>onSkipTask(t.id)} onUnskip={()=>onUnskipTask(t.id)}
                           onEnd={()=>{ if(confirm(`"${t.name}" sonlandırılsın mı?`)) onEndTask(t.id) }}
                           onRestore={()=>onRestoreTask(t.id)}
+                          isPro={true}
+                          bufferDay={goal?.buffer_day}
+                          goalStartDate={goal?.start_date}
+                          activeWeekNum={activeWeek}
+                          onTransferToTomorrow={onTransferTask ? ()=>{
+                            const tomorrow = addDays(today, 1)
+                            onTransferTask(t.id, tomorrow)
+                          } : null}
+                          onTransferToBuffer={onTransferTask && goal?.buffer_day!=null ? ()=>{
+                            // Bu haftanın telafi gününü bul
+                            const wStart = new Date(addDays(goal.start_date,(activeWeek-1)*7)+'T00:00:00')
+                            const bufDow = goal.buffer_day
+                            // Haftanın başından itibaren telafi gününü bul
+                            let bufDate = null
+                            for(let i=0;i<7;i++){
+                              const d = new Date(wStart); d.setDate(d.getDate()+i)
+                              if(d.getDay()===bufDow){ bufDate=d.toISOString().slice(0,10); break }
+                            }
+                            if(bufDate) onTransferTask(t.id, bufDate)
+                          } : null}
                         />
                       )}
                     </div>
@@ -1749,7 +1786,7 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
 }
 
 /* ─── Task Menu ──────────────────────────────────────────────────────────── */
-function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, onRestore }) {
+function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, onRestore, isPro, onTransferToTomorrow, onTransferToBuffer, bufferDay }) {
   const isOpen    = openId === taskId
   const isActive  = status === 'active'
   const isSkipped = status === 'skipped'
@@ -1783,7 +1820,21 @@ function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, 
           borderRadius:14, padding:6, zIndex:500, minWidth:192,
           boxShadow:'0 8px 32px rgba(0,0,0,0.45)'
         }}>
-          {(isActive || isInactive) && (
+          {/* Pro plan transfer seçenekleri */}
+          {isPro && isActive && onTransferToTomorrow && (
+            <>
+              <button onClick={()=>{setOpenId(null);onTransferToTomorrow()}} style={menuBtn}>
+                <span style={{ fontSize:15 }}>📅</span> Yarına aktar
+              </button>
+              {onTransferToBuffer && (
+                <button onClick={()=>{setOpenId(null);onTransferToBuffer()}} style={menuBtn}>
+                  <span style={{ fontSize:15 }}>⚡</span> Telafi gününe aktar
+                </button>
+              )}
+              <div style={{ height:1, background:'var(--border)', margin:'4px 0' }}/>
+            </>
+          )}
+          {(isActive || isInactive) && !isPro && (
             <button onClick={()=>{setOpenId(null);onSkip()}} style={menuBtn}>
               <span style={{ fontSize:15 }}>⏭</span> Bugün atla
             </button>
@@ -1795,7 +1846,7 @@ function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, 
           )}
           {!isEnded && (
             <>
-              <div style={{ height:1, background:'var(--border)', margin:'4px 0' }}/>
+              {!isPro && <div style={{ height:1, background:'var(--border)', margin:'4px 0' }}/>}
               <button onClick={()=>{setOpenId(null);onEnd()}} style={{ ...menuBtn, color:'var(--bad)' }}>
                 <span style={{ fontSize:15 }}>⏹</span> Görevi sonlandır
               </button>
