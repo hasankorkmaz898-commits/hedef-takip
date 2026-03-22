@@ -1,5 +1,8 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createClient } from '../lib/supabase'
+
+const DOW_TR   = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
+const DOW_FULL = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi']
 import ProfilePanel from '../components/ProfilePanel'
 import SharedGoalsPanel from '../components/SharedGoalsPanel'
 import ProfessionalPlanModal from '../components/ProfessionalPlanModal'
@@ -366,10 +369,9 @@ export default function Home() {
     // Arka planda kaydet
     supabase.from('tasks').update({ skipped_dates:skipped, extra_dates:extraDates }).eq('id', taskId)
     // Toast mesajı
-    const DOW_TR_MSG = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi']
     const tDow = new Date(targetDate+'T00:00:00').getDay()
     const isBuffer = t.buffer_day != null || goal?.buffer_day != null
-    showToast(`📅 ${t.name} → ${DOW_TR_MSG[tDow]}'ye aktarıldı`)
+    showToast(`📅 ${t.name} → ${DOW_FULL[tDow]}'ye aktarıldı`)
   }
 
   async function endTask(goalId, taskId) {
@@ -1120,7 +1122,6 @@ function RiskMeter({ score }) {
 
 /* ─── Analytics Panel ────────────────────────────────────────────────────── */
 function AnalyticsPanel({ goals, tasks, logs }) {
-  const DOW_TR = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
   const today  = todayStr()
   const [expandedId, setExpandedId] = useState(null)
   const [analyticTab, setAnalyticTab] = useState({}) // {goalId: 'overview'|'weekly'|'trend'|'tasks'}
@@ -1618,7 +1619,6 @@ function HeatmapCalendar({ tasks, logs, startDate, totalDays }) {
 function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onToggleTask, onSetQuality, onSkipTask, onUnskipTask, onEndTask, onRestoreTask, openMenuId, setOpenMenuId, onWeekClose, onTransferTask }) {
   const allWeekNums = [...new Set(tasks.map(t=>t.week_number).filter(Boolean))].sort((a,b)=>a-b)
   const [activeWeek, setActiveWeek] = useState(currentWeekNum || allWeekNums[0] || 1)
-  const DOW_FULL = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi']
 
   const weekTasks = tasks.filter(t => t.week_number === activeWeek)
   const weekName  = weekTasks[0]?.week_name || `${activeWeek}. Hafta`
@@ -1905,7 +1905,6 @@ const menuBtn = {
 }
 
 /* ─── Goal Modal ─────────────────────────────────────────────────────────── */
-const DOW_TR  = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
 
 const GOAL_TEMPLATES = [
   { icon:'🏃', name:'30 günde koşu alışkanlığı', days:30,
