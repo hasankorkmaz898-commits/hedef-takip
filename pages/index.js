@@ -3,6 +3,8 @@ import { createClient } from '../lib/supabase'
 import ProfilePanel from '../components/ProfilePanel'
 import SharedGoalsPanel from '../components/SharedGoalsPanel'
 import ProfessionalPlanModal from '../components/ProfessionalPlanModal'
+import WeeklyCheckin from '../components/WeeklyCheckin'
+import MilestoneCelebration from '../components/MilestoneCelebration'
 
 /* ─── Constants ──────────────────────────────────────────────────────────── */
 const Q      = { good: 1.0, mid: 0.6, bad: 0.3 }
@@ -182,6 +184,8 @@ export default function Home() {
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [expandedGoal,   setExpandedGoal]   = useState(null)
   const [showProPlan,    setShowProPlan]    = useState(false)
+  const [checkinGoal,    setCheckinGoal]    = useState(null)  // {goal, weekNum, weekName, stats}
+  const [milestoneData,  setMilestoneData]  = useState(null)  // {weekNum, weekName, stats}
 
   /* Auth */
   useEffect(() => {
@@ -453,6 +457,9 @@ export default function Home() {
               onDelete={() => handleDeleteGoal(goal.id)}
               onReorderTasks={(from,to) => reorderTasks(goal.id, from, to)}
               onShare={() => shareGoal(goal.id)}
+              onWeekClose={goal.is_professional ? (weekNum, weekName, stats) => {
+                setCheckinGoal({ goal, weekNum, weekName, stats })
+              } : null}
               onSkipTask={tid => skipTaskToday(goal.id, tid)}
               onUnskipTask={tid => unskipTask(goal.id, tid)}
               onEndTask={tid => endTask(goal.id, tid)}
@@ -515,6 +522,34 @@ export default function Home() {
           user={user}
           onClose={() => setShowProPlan(false)}
           onSaved={() => { setShowProPlan(false); loadAll() }}
+        />
+      )}
+
+      {/* Haftalık Değerlendirme */}
+      {checkinGoal && (
+        <WeeklyCheckin
+          goal={checkinGoal.goal}
+          weekNum={checkinGoal.weekNum}
+          weekName={checkinGoal.weekName}
+          stats={checkinGoal.stats}
+          onComplete={(weekNum) => {
+            const isMilestone = weekNum % 4 === 0
+            setCheckinGoal(null)
+            if (isMilestone) {
+              setMilestoneData({ weekNum, weekName:checkinGoal.weekName, stats:checkinGoal.stats })
+            }
+          }}
+          onClose={() => setCheckinGoal(null)}
+        />
+      )}
+
+      {/* Kilometre Taşı Kutlaması */}
+      {milestoneData && (
+        <MilestoneCelebration
+          weekNum={milestoneData.weekNum}
+          weekName={milestoneData.weekName}
+          stats={milestoneData.stats}
+          onContinue={() => setMilestoneData(null)}
         />
       )}
 
@@ -593,7 +628,7 @@ function GoogleIcon() {
 }
 
 /* ─── Goal Card ──────────────────────────────────────────────────────────── */
-function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabChange, onToggleHist, onToggleTask, onSetQuality, onRemoveLog, onSaveNote, onNoteChange, onEdit, onDelete, isOpen, onToggleOpen, onReorderTasks, onShare, onSkipTask, onUnskipTask, onEndTask, onRestoreTask }) {
+function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabChange, onToggleHist, onToggleTask, onSetQuality, onRemoveLog, onSaveNote, onNoteChange, onEdit, onDelete, isOpen, onToggleOpen, onReorderTasks, onShare, onWeekClose, onSkipTask, onUnskipTask, onEndTask, onRestoreTask }) {
   const today    = todayStr()
   const dragIdx     = useRef(null)
   const dragOverIdx = useRef(null)
@@ -823,6 +858,41 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                   })}
                 </div>
                 <NoteSection goalId={goal.id} ds={today} notes={notes} noteInputs={noteInputs} onNoteChange={onNoteChange} onSaveNote={onSaveNote} />
+
+                {/* Pro plan: haftayı kapat butonu */}
+                {isPro && onWeekClose && currentWeekNum && (
+                  <div style={{ marginTop:14, background:'rgba(124,111,247,0.07)', border:'1.5px solid rgba(124,111,247,0.2)', borderRadius:14, padding:'12px 14px' }}>
+                    <div style={{ fontSize:12, fontWeight:600, color:'var(--text2)', marginBottom:10 }}>
+                      📋 {currentWeekName} · Bu haftayı tamamladın mı?
+                    </div>
+                    <button
+                      onClick={()=>{
+                        const weekLogs = logs.filter(l=>{
+                          const wStart = addDays(goal.start_date,(currentWeekNum-1)*7)
+                          const wEnd   = addDays(goal.start_date,currentWeekNum*7)
+                          return l.log_date>=wStart && l.log_date<wEnd
+                        })
+                        const weekTasks = tasks.filter(t=>t.week_number===currentWeekNum)
+                        const total     = weekTasks.length*7
+                        const done      = weekLogs.length
+                        const dayScores = Array.from({length:7},(_,i)=>{
+                          const ds = addDays(goal.start_date,(currentWeekNum-1)*7+i)
+                          return Math.round(dayScore(weekTasks,weekLogs,ds)*100)
+                        })
+                        const activeDays = dayScores.filter(s=>s>0).length
+                        const completionPct = total>0?Math.round(done/total*100):0
+                        const qs = weekLogs.length?Math.round(weekLogs.reduce((s,l)=>s+(l.quality==='good'?100:l.quality==='mid'?60:30),0)/weekLogs.length):0
+                        const qualityLabel = qs>=70?'İyi':qs>=40?'Orta':'Düşük'
+                        const streak = getStreak(weekTasks,weekLogs,goal.start_date)
+                        onWeekClose(currentWeekNum, currentWeekName, { completionPct, activeDays, dailyScores:dayScores, qualityLabel, streak })
+                      }}
+                      style={{ width:'100%', padding:'11px', background:'var(--accent)', border:'none', borderRadius:12, color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}
+                    >
+                      Haftayı Değerlendir ve Kapat →
+                    </button>
+                  </div>
+                )}
+
                 {logs.length > 0 && (
                   <div style={{ marginTop:16 }}>
                     <div style={{ ...css.label, marginBottom:8 }}>Toplam Kalite Dağılımı</div>
