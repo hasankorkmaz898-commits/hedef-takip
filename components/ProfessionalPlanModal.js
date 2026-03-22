@@ -308,8 +308,8 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
             <div>
               <span style={s.label}>Hangi gün?</span>
               <div style={{display:'flex',gap:5}}>
-                {DOW_TR.map((d,dow) => (
-                  <button key={dow} onClick={()=>setBufferDay(dow)} style={s.dayBtn(bufferDay===dow)}>{d}</button>
+                {[1,2,3,4,5,6,0].map(dow => (
+                  <button key={dow} onClick={()=>setBufferDay(dow)} style={s.dayBtn(bufferDay===dow)}>{DOW_TR[dow]}</button>
                 ))}
               </div>
             </div>
@@ -378,8 +378,8 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
 
             <span style={s.label}>Aktif günler</span>
             <div style={{display:'flex',gap:5,marginBottom:16}}>
-              {DOW_TR.map((d,dow) => (
-                <button key={dow} onClick={()=>toggleDay(activeWk,dow)} style={s.dayBtn(wk.days[dow].enabled)}>{d}</button>
+              {[1,2,3,4,5,6,0].map(dow => (
+                <button key={dow} onClick={()=>toggleDay(activeWk,dow)} style={s.dayBtn(wk.days[dow].enabled)}>{DOW_TR[dow]}</button>
               ))}
             </div>
 
