@@ -1,8 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createClient } from '../lib/supabase'
-
-const DOW_TR   = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
-const DOW_FULL = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi']
 import ProfilePanel from '../components/ProfilePanel'
 import SharedGoalsPanel from '../components/SharedGoalsPanel'
 import ProfessionalPlanModal from '../components/ProfessionalPlanModal'
@@ -369,9 +366,10 @@ export default function Home() {
     // Arka planda kaydet
     supabase.from('tasks').update({ skipped_dates:skipped, extra_dates:extraDates }).eq('id', taskId)
     // Toast mesajı
+    const DOW_TR_MSG = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi']
     const tDow = new Date(targetDate+'T00:00:00').getDay()
     const isBuffer = t.buffer_day != null || goal?.buffer_day != null
-    showToast(`📅 ${t.name} → ${DOW_FULL[tDow]}'ye aktarıldı`)
+    showToast(`📅 ${t.name} → ${DOW_TR_MSG[tDow]}'ye aktarıldı`)
   }
 
   async function endTask(goalId, taskId) {
@@ -1122,6 +1120,7 @@ function RiskMeter({ score }) {
 
 /* ─── Analytics Panel ────────────────────────────────────────────────────── */
 function AnalyticsPanel({ goals, tasks, logs }) {
+  const DOW_TR = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
   const today  = todayStr()
   const [expandedId, setExpandedId] = useState(null)
   const [analyticTab, setAnalyticTab] = useState({}) // {goalId: 'overview'|'weekly'|'trend'|'tasks'}
@@ -1396,7 +1395,7 @@ function AnalyticsPanel({ goals, tasks, logs }) {
                         <>
                           <div style={{ ...css.label, marginBottom:8 }}>Gün Bazlı Ortalama</div>
                           <div style={{ display:'flex', gap:4, alignItems:'flex-end', height:64, marginBottom:6 }}>
-                            {[1,2,3,4,5,6,0].map((dow)=>{ const d=DOW_TR[dow]; {
+                            {DOW_TR.map((d,dow)=>{
                               const v = dowAvg[dow]
                               const h = v!==null ? Math.max(6, Math.round(v/100*50)) : 4
                               const isBest  = dow===bestDow  && v!==null
@@ -1536,7 +1535,7 @@ function HeatmapCalendar({ tasks, logs, startDate, totalDays }) {
     return 'rgba(248,113,113,0.18)' // aktif gün ama yapılmadı
   }
 
-  const DOW_SHORT = ['Pt','Sa','Ça','Pe','Cu','Ct','Pz'] // Pzt→Paz (0-6 index'i dışarıdan gelir)
+  const DOW_SHORT = ['Pt','Sa','Ça','Pe','Cu','Ct','Pz']
 
   // İstatistikler
   const activeDays = days.filter(d => d.inGoal && !d.isFuture && d.isActive)
@@ -1619,6 +1618,7 @@ function HeatmapCalendar({ tasks, logs, startDate, totalDays }) {
 function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onToggleTask, onSetQuality, onSkipTask, onUnskipTask, onEndTask, onRestoreTask, openMenuId, setOpenMenuId, onWeekClose, onTransferTask }) {
   const allWeekNums = [...new Set(tasks.map(t=>t.week_number).filter(Boolean))].sort((a,b)=>a-b)
   const [activeWeek, setActiveWeek] = useState(currentWeekNum || allWeekNums[0] || 1)
+  const DOW_FULL = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi']
 
   const weekTasks = tasks.filter(t => t.week_number === activeWeek)
   const weekName  = weekTasks[0]?.week_name || `${activeWeek}. Hafta`
@@ -1905,6 +1905,7 @@ const menuBtn = {
 }
 
 /* ─── Goal Modal ─────────────────────────────────────────────────────────── */
+const DOW_TR  = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
 
 const GOAL_TEMPLATES = [
   { icon:'🏃', name:'30 günde koşu alışkanlığı', days:30,
@@ -2067,7 +2068,7 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
                       Hangi günler aktif? {t.active_days.length===0 && <span style={{ color:'var(--accent)', fontWeight:500, textTransform:'none', letterSpacing:'normal', fontSize:11 }}>· her gün (varsayılan)</span>}
                     </div>
                     <div style={{ display:'flex', gap:6 }}>
-                      {[1,2,3,4,5,6,0].map((dow)=>{ const label=DOW_TR[dow];
+                      {DOW_TR.map((label,dow)=>{
                         const on = t.active_days.includes(dow)
                         return (
                           <button key={dow} onClick={()=>toggleDay(i,dow)} style={{
