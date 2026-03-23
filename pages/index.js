@@ -355,16 +355,22 @@ export default function Home() {
     setTasks(p=>({...p,[goalId]:p[goalId].map(x=>x.id===taskId?{...x,skipped_dates:skipped}:x)}))
   }
 
-  function transferTaskTo(goalId, taskId, targetDate) {
+  async function transferTaskTo(goalId, taskId, targetDate) {
     const today = todayStr()
     const t = (tasks[goalId]||[]).find(x=>x.id===taskId)
     if (!t) return
     const skipped    = [...new Set([...(t.skipped_dates||[]).map(String), String(today)])]
     const extraDates = [...new Set([...(t.extra_dates||[]).map(String), String(targetDate)])]
-    // Anlık UI güncelle
+    // Önce UI güncelle (anlık görünüm)
     setTasks(p=>({...p,[goalId]:p[goalId].map(x=>x.id===taskId?{...x,skipped_dates:skipped,extra_dates:extraDates}:x)}))
-    // Arka planda DB'ye kaydet
-    supabase.from('tasks').update({ skipped_dates:skipped, extra_dates:extraDates }).eq('id', taskId)
+    // DB'ye kaydet — await ile bekliyoruz
+    const { error } = await supabase.from('tasks').update({ skipped_dates:skipped, extra_dates:extraDates }).eq('id', taskId)
+    if (error) {
+      // Hata olursa UI'ı geri al
+      setTasks(p=>({...p,[goalId]:p[goalId].map(x=>x.id===taskId?{...x,skipped_dates:t.skipped_dates||[],extra_dates:t.extra_dates||[]}:x)}))
+      showToast('❌ Aktarılamadı, tekrar dene')
+      return
+    }
     const DOW_NAMES = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi']
     const d = new Date(targetDate+'T00:00:00')
     showToast(`📅 ${t.name} → ${DOW_NAMES[d.getDay()]} aktarıldı`)
