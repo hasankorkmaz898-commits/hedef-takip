@@ -15,40 +15,44 @@ const s = {
     border: v==='primary'?'none':v==='ghost'?'none':'1.5px solid var(--border)',
     color: v==='primary'?'#fff':v==='ghost'?'var(--accent)':'var(--text2)',
   }),
-  dayBtn: on => ({
+  dayBtn: (on, isBuffer) => ({
     flex:1, padding:'7px 3px', borderRadius:10, fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'inherit',
-    background: on?'var(--accent)':'var(--surface)',
-    border: `1.5px solid ${on?'var(--accent)':'var(--border)'}`,
-    color: on?'#fff':'var(--text3)',
+    background: isBuffer?'rgba(251,191,36,0.2)': on?'var(--accent)':'var(--surface)',
+    border: `1.5px solid ${isBuffer?'rgba(251,191,36,0.6)': on?'var(--accent)':'var(--border)'}`,
+    color: isBuffer?'var(--mid)': on?'#fff':'var(--text3)',
   }),
 }
 
 const PRO_TEMPLATES = [
   {
-    icon:'🏃', name:'12 Haftalık Maraton Hazırlığı', weekCount:12, bufferDay:0,
+    icon:'🏃', name:'12 Haftalık Maraton Hazırlığı', weekCount:12,
     weeks: Array.from({length:12},(_,i)=>({
       name: i<4?`Baz Antrenman - ${i+1}. Hafta`: i<8?`Tempo Artışı - ${i-3}. Hafta`:`Yarış Hazırlığı - ${i-7}. Hafta`,
+      bufferDay: 0,
       days: [{dow:1,enabled:true,tasks:['Uzun koşu','Esneme']},{dow:2,enabled:true,tasks:['Tempo koşusu']},{dow:3,enabled:true,tasks:['Dinlenme koşusu','Kuvvet']},{dow:4,enabled:true,tasks:['Interval antrenmanı']},{dow:5,enabled:true,tasks:['Kısa koşu','Beslenme takibi']},{dow:6,enabled:false,tasks:['']},{dow:0,enabled:false,tasks:['']}]
     }))
   },
   {
-    icon:'🗣️', name:'6 Aylık İngilizce Programı', weekCount:24, bufferDay:0,
+    icon:'🗣️', name:'6 Aylık İngilizce Programı', weekCount:24,
     weeks: Array.from({length:24},(_,i)=>({
       name: i<8?`Temel - ${i+1}. Hafta`: i<16?`Orta - ${i-7}. Hafta`:`İleri - ${i-15}. Hafta`,
+      bufferDay: 0,
       days: [{dow:1,enabled:true,tasks:['30 dk kelime','10 dk konuşma']},{dow:2,enabled:true,tasks:['Gramer alıştırmaları']},{dow:3,enabled:true,tasks:['30 dk kelime','Podcast dinle']},{dow:4,enabled:true,tasks:['Yazma pratiği']},{dow:5,enabled:true,tasks:['Kelime tekrar','Haftalık özet']},{dow:6,enabled:true,tasks:['Film izle (İngilizce)']},{dow:0,enabled:false,tasks:['']}]
     }))
   },
   {
-    icon:'💪', name:'4 Haftalık Detoks', weekCount:4, bufferDay:0,
+    icon:'💪', name:'4 Haftalık Detoks', weekCount:4,
     weeks: Array.from({length:4},(_,i)=>({
       name: ['Hazırlık','Yoğunlaşma','Derin Temizlik','Pekiştirme'][i]+` Haftası`,
+      bufferDay: 0,
       days: [{dow:1,enabled:true,tasks:['Sabah suyu 1L','Şekersiz beslen','30 dk egzersiz']},{dow:2,enabled:true,tasks:['Meditasyon 10 dk','Yeşil smoothie']},{dow:3,enabled:true,tasks:['Sabah suyu','30 dk yürüyüş']},{dow:4,enabled:true,tasks:['Meditasyon','Erken uyku']},{dow:5,enabled:true,tasks:['Sabah suyu','Haftalık değerlendirme']},{dow:6,enabled:true,tasks:['Aktif dinlenme']},{dow:0,enabled:true,tasks:['Haftalık hazırlık']}]
     }))
   },
   {
-    icon:'🧘', name:'8 Haftalık Mindfulness', weekCount:8, bufferDay:null,
+    icon:'🧘', name:'8 Haftalık Mindfulness', weekCount:8,
     weeks: Array.from({length:8},(_,i)=>({
       name: `${i+1}. Hafta · ${['Farkındalık','Nefes','Beden Taraması','Duygu Yönetimi','Odaklanma','Kabul','Şükran','Entegrasyon'][i]}`,
+      bufferDay: null,
       days: [{dow:1,enabled:true,tasks:['Sabah meditasyonu 10 dk','Günlük yaz']},{dow:2,enabled:true,tasks:['Nefes egzersizi']},{dow:3,enabled:true,tasks:['Sabah meditasyonu','Şükran listesi']},{dow:4,enabled:true,tasks:['Yürüyüş meditasyonu']},{dow:5,enabled:true,tasks:['Sabah meditasyonu','Haftalık özet']},{dow:6,enabled:false,tasks:['']},{dow:0,enabled:false,tasks:['']}]
     }))
   },
@@ -57,6 +61,7 @@ const PRO_TEMPLATES = [
 function buildWeeks(n) {
   return Array.from({length:n}, (_,i) => ({
     name: `${i+1}. Hafta`,
+    bufferDay: null,
     days: Array.from({length:7}, (_,d) => ({ dow:d, enabled:d>=1&&d<=5, tasks:[''] }))
   }))
 }
@@ -65,7 +70,6 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
   const [view,      setView]      = useState('start')
   const [planName,  setPlanName]  = useState('')
   const [weekCount, setWkCount]   = useState(4)
-  const [bufferDay, setBufferDay] = useState(null)
   const [weeks,     setWeeks]     = useState(() => buildWeeks(4))
   const [activeWk,  setActiveWk]  = useState(0)
   const [saving,    setSaving]    = useState(false)
@@ -102,12 +106,12 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
     setWkCount(tpl.weekCount)
     setWeeks(tpl.weeks.map(w => ({
       ...w,
+      bufferDay: w.bufferDay ?? null,
       days: Array.from({length:7}, (_,d) => {
         const found = w.days.find(x => x.dow === d)
         return found || { dow:d, enabled:false, tasks:[''] }
       })
     })))
-    setBufferDay(tpl.bufferDay ?? null)
     setActiveWk(0)
     setView('weeks')
   }
@@ -120,6 +124,7 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
       if (count > prev.length) {
         const extra = Array.from({length:count-prev.length}, (_,i) => ({
           name:`${prev.length+i+1}. Hafta`,
+          bufferDay: null,
           days: Array.from({length:7}, (_,d) => ({ dow:d, enabled:d>=1&&d<=5, tasks:[''] }))
         }))
         return [...prev, ...extra]
@@ -132,6 +137,10 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
     setWeeks(p => p.map((w,i) => i!==wi ? w : {
       ...w, days: w.days.map(d => d.dow===dow ? {...d,enabled:!d.enabled} : d)
     }))
+  }
+
+  function setWeekBufferDay(wi, dow) {
+    setWeeks(p => p.map((w,i) => i!==wi ? w : { ...w, bufferDay: w.bufferDay===dow ? null : dow }))
   }
 
   function addTask(wi, dow) {
@@ -153,7 +162,9 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
     flushCurrentWeek()
     if (wi >= weeks.length-1) return
     setWeeks(p => p.map((w,i) => i===wi+1 ? {
-      ...w, days: p[wi].days.map(d => ({...d, tasks:[...d.tasks]}))
+      ...w,
+      bufferDay: p[wi].bufferDay,
+      days: p[wi].days.map(d => ({...d, tasks:[...d.tasks]}))
     } : w))
   }
 
@@ -184,7 +195,7 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
         start_date:      new Date().toISOString().slice(0,10),
         user_id:         user.id,
         is_professional: true,
-        buffer_day:      bufferDay,
+        buffer_day:      null, // artık hafta bazlı
       }).select().single()
 
       if (!goal) throw new Error('Hedef oluşturulamadı')
@@ -194,11 +205,29 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
         week.days.forEach(day => {
           if (!day.enabled) return
           day.tasks.filter(t => t).forEach((taskName, ti) => {
-            taskRows.push({ goal_id:goal.id, name:taskName, order_index:ti, active_days:[day.dow], week_number:wi+1, week_name:week.name })
+            taskRows.push({
+              goal_id:    goal.id,
+              name:       taskName,
+              order_index:ti,
+              active_days:[day.dow],
+              week_number:wi+1,
+              week_name:  week.name,
+              week_buffer_day: week.bufferDay ?? null,
+            })
           })
         })
-        if (bufferDay != null) {
-          taskRows.push({ goal_id:goal.id, name:'⚡ Telafi Günü', order_index:99, active_days:[bufferDay], week_number:wi+1, week_name:week.name, is_buffer:true })
+        // Telafi görevi
+        if (week.bufferDay != null) {
+          taskRows.push({
+            goal_id:    goal.id,
+            name:       '⚡ Telafi Günü',
+            order_index:99,
+            active_days:[week.bufferDay],
+            week_number:wi+1,
+            week_name:  week.name,
+            week_buffer_day: week.bufferDay,
+            is_buffer:  true,
+          })
         }
       })
       if (taskRows.length) await supabase.from('tasks').insert(taskRows)
@@ -208,8 +237,9 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
   }
 
   const wk = weeks[activeWk]
+  const totalWithBuffer = weeks.filter(w=>w.bufferDay!=null).length
 
-  // ── Başlangıç: şablon seç veya sıfırdan ──
+  // ── Başlangıç ──
   if (view === 'start') return (
     <div style={s.overlay} onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div style={s.sheet}>
@@ -252,7 +282,6 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
           </div>
           <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text3)',fontSize:20,cursor:'pointer'}}>✕</button>
         </div>
-
         <div style={{background:'var(--surface2)',borderRadius:16,padding:16,marginBottom:14}}>
           <div style={{marginBottom:12}}>
             <span style={s.label}>Plan Adı</span>
@@ -268,30 +297,6 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
             </div>
           </div>
         </div>
-
-        <div style={{background:'rgba(251,191,36,0.07)',border:'1.5px solid rgba(251,191,36,0.25)',borderRadius:16,padding:14,marginBottom:14}}>
-          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:bufferDay!=null?10:0}}>
-            <span style={{fontSize:16}}>⚡</span>
-            <div style={{flex:1}}>
-              <div style={{fontSize:13,fontWeight:700,color:'var(--mid)'}}>Telafi Günü</div>
-              <div style={{fontSize:11,color:'var(--text3)'}}>Her haftaya otomatik 1 telafi günü ekle</div>
-            </div>
-            <button onClick={()=>setBufferDay(bufferDay!=null?null:0)} style={{padding:'6px 12px',borderRadius:10,border:`1.5px solid ${bufferDay!=null?'rgba(251,191,36,0.5)':'var(--border)'}`,background:bufferDay!=null?'rgba(251,191,36,0.15)':'var(--surface2)',color:bufferDay!=null?'var(--mid)':'var(--text3)',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
-              {bufferDay!=null?'Açık':'Kapalı'}
-            </button>
-          </div>
-          {bufferDay!=null && (
-            <div>
-              <span style={s.label}>Hangi gün?</span>
-              <div style={{display:'flex',gap:5}}>
-                {[1,2,3,4,5,6,0].map(dow => (
-                  <button key={dow} onClick={()=>setBufferDay(dow)} style={s.dayBtn(bufferDay===dow)}>{DOW_TR[dow]}</button>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-
         <button onClick={()=>setView('weeks')} disabled={!planName.trim()} style={{...s.btn('primary'),width:'100%',padding:'13px',opacity:planName.trim()?1:0.5}}>
           Haftalara Devam →
         </button>
@@ -315,6 +320,7 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
         <div style={{display:'flex',gap:6,overflowX:'auto',paddingBottom:8,marginBottom:14,WebkitOverflowScrolling:'touch'}}>
           {weeks.map((w,i) => {
             const isMs = (i+1)%4===0
+            const hasBuf = w.bufferDay != null
             return (
               <button key={i} onClick={()=>switchWeek(i)} style={{
                 flexShrink:0, padding:'7px 13px', borderRadius:12, cursor:'pointer', fontFamily:'inherit',
@@ -324,7 +330,8 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
                 fontSize:12, fontWeight:700, position:'relative'
               }}>
                 {w.name}
-                {isMs&&i!==activeWk&&<span style={{position:'absolute',top:-4,right:-4,fontSize:10}}>🏆</span>}
+                {hasBuf&&i!==activeWk&&<span style={{position:'absolute',top:-5,right:-2,fontSize:9}}>⚡</span>}
+                {isMs&&i!==activeWk&&!hasBuf&&<span style={{position:'absolute',top:-4,right:-4,fontSize:10}}>🏆</span>}
               </button>
             )
           })}
@@ -333,6 +340,8 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
         {/* Aktif hafta */}
         {wk && (
           <div style={{background:'var(--surface2)',borderRadius:18,padding:16,marginBottom:14}}>
+
+            {/* Hafta adı */}
             <div style={{display:'flex',gap:8,alignItems:'center',marginBottom:14}}>
               <input
                 key={`wkname-${activeWk}`}
@@ -352,40 +361,97 @@ export default function ProfessionalPlanModal({ user, onClose, onSaved }) {
               </div>
             )}
 
-            <span style={s.label}>Aktif günler</span>
-            <div style={{display:'flex',gap:5,marginBottom:16}}>
-              {[1,2,3,4,5,6,0].map(dow => (
-                <button key={dow} onClick={()=>toggleDay(activeWk,dow)} style={s.dayBtn(wk.days[dow].enabled)}>{DOW_TR[dow]}</button>
-              ))}
+            {/* Aktif günler + telafi günü birlikte */}
+            <span style={s.label}>Aktif günler & Telafi Günü</span>
+            <div style={{display:'flex',gap:5,marginBottom:wk.bufferDay!=null?10:16}}>
+              {[1,2,3,4,5,6,0].map(dow => {
+                const isActive = wk.days[dow].enabled
+                const isBuffer = wk.bufferDay === dow
+                return (
+                  <button key={dow} onClick={()=>toggleDay(activeWk,dow)} style={s.dayBtn(isActive, isBuffer)}>
+                    {DOW_TR[dow]}
+                    {isBuffer && <span style={{display:'block',fontSize:8,marginTop:1}}>⚡</span>}
+                  </button>
+                )
+              })}
             </div>
 
-            {wk.days.filter(d=>d.enabled).length===0 ? (
-              <div style={{textAlign:'center',padding:'16px 0',color:'var(--text3)',fontSize:13}}>Hiç aktif gün seçilmedi</div>
-            ) : wk.days.filter(d=>d.enabled).map(day => (
-              <div key={`${activeWk}-${day.dow}`} style={{marginBottom:14}}>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:7}}>
-                  <span style={{fontSize:12,fontWeight:700,color:'var(--accent2)'}}>{DOW_FULL[day.dow]}</span>
-                  <button onClick={()=>addTask(activeWk,day.dow)} style={{background:'none',border:'none',color:'var(--accent)',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>+ Görev ekle</button>
-                </div>
-                {day.tasks.map((task,ti) => (
-                  <div key={`${activeWk}-${day.dow}-${ti}`} style={{display:'flex',gap:7,alignItems:'center',marginBottom:7}}>
-                    <input
-                      ref={el => { if(el) inputRefs.current[`${activeWk}-${day.dow}-${ti}`] = el }}
-                      defaultValue={task}
-                      placeholder={`${DOW_FULL[day.dow]} görevi ${ti+1}`}
-                      style={{...s.input,flex:1}}
-                    />
-                    <button onClick={()=>removeTask(activeWk,day.dow,ti)} style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:16,padding:'0 4px',flexShrink:0}}>✕</button>
+            {/* Telafi günü seçici */}
+            <div style={{background:'rgba(251,191,36,0.06)',border:'1.5px solid rgba(251,191,36,0.2)',borderRadius:12,padding:'10px 12px',marginBottom:16}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:wk.bufferDay!=null?10:0}}>
+                <div style={{display:'flex',alignItems:'center',gap:7}}>
+                  <span style={{fontSize:13}}>⚡</span>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:700,color:'var(--mid)'}}>
+                      {wk.bufferDay!=null ? `Telafi Günü: ${DOW_FULL[wk.bufferDay]}` : 'Telafi Günü'}
+                    </div>
+                    <div style={{fontSize:10,color:'var(--text3)',marginTop:1,lineHeight:1.4}}>
+                      Haftanın dinlenme ve yarım kalan işleri temizleme günüdür.<br/>
+                      Bu güne mümkün olduğunca az görev atayın.
+                    </div>
                   </div>
-                ))}
+                </div>
+                <button
+                  onClick={()=>setWeekBufferDay(activeWk, wk.bufferDay!=null ? wk.bufferDay : 0)}
+                  style={{padding:'5px 10px',borderRadius:9,border:`1.5px solid ${wk.bufferDay!=null?'rgba(251,191,36,0.5)':'var(--border)'}`,background:wk.bufferDay!=null?'rgba(251,191,36,0.15)':'var(--surface2)',color:wk.bufferDay!=null?'var(--mid)':'var(--text3)',fontSize:11,fontWeight:700,cursor:'pointer',fontFamily:'inherit',flexShrink:0}}
+                >
+                  {wk.bufferDay!=null?'Açık':'Kapalı'}
+                </button>
               </div>
-            ))}
+              {wk.bufferDay!=null && (
+                <div style={{display:'flex',gap:5}}>
+                  {[1,2,3,4,5,6,0].map(dow => (
+                    <button key={dow} onClick={()=>setWeekBufferDay(activeWk,dow)} style={{
+                      flex:1, padding:'6px 2px', borderRadius:9, fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'inherit',
+                      background: wk.bufferDay===dow?'rgba(251,191,36,0.25)':'var(--surface)',
+                      border: `1.5px solid ${wk.bufferDay===dow?'rgba(251,191,36,0.6)':'var(--border)'}`,
+                      color: wk.bufferDay===dow?'var(--mid)':'var(--text3)',
+                    }}>{DOW_TR[dow]}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Günlük görevler */}
+            {[...wk.days.filter(d=>d.enabled), ...(wk.bufferDay!=null&&!wk.days[wk.bufferDay]?.enabled?[{dow:wk.bufferDay,enabled:true,tasks:[''],_isBufferOnly:true}]:[])].length===0 ? (
+              <div style={{textAlign:'center',padding:'16px 0',color:'var(--text3)',fontSize:13}}>Hiç aktif gün seçilmedi</div>
+            ) : [...wk.days.filter(d=>d.enabled), ...(wk.bufferDay!=null&&!wk.days[wk.bufferDay]?.enabled?[wk.days[wk.bufferDay]]:[])].map(day => {
+              const isBufferDay = wk.bufferDay === day.dow
+              return (
+                <div key={`${activeWk}-${day.dow}`} style={{marginBottom:14}}>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:7}}>
+                    <div style={{display:'flex',alignItems:'center',gap:6}}>
+                      <span style={{fontSize:12,fontWeight:700,color:isBufferDay?'var(--mid)':'var(--text2)'}}>{DOW_FULL[day.dow]}</span>
+                      {isBufferDay && <span style={{fontSize:10,background:'rgba(251,191,36,0.12)',color:'var(--mid)',borderRadius:99,padding:'1px 7px',fontWeight:700}}>⚡ Telafi</span>}
+                    </div>
+                    <button onClick={()=>addTask(activeWk,day.dow)} style={{background:'none',border:'none',color:'var(--accent)',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit'}}>+ Görev ekle</button>
+                  </div>
+                  {isBufferDay && (
+                    <div style={{fontSize:10,color:'var(--text3)',background:'rgba(251,191,36,0.05)',border:'1px solid rgba(251,191,36,0.15)',borderRadius:8,padding:'5px 9px',marginBottom:8,lineHeight:1.5}}>
+                      💡 Az görev önerilir — aktarılan görevler de buraya gelebilir
+                    </div>
+                  )}
+                  {day.tasks.map((task,ti) => (
+                    <div key={`${activeWk}-${day.dow}-${ti}`} style={{display:'flex',gap:7,alignItems:'center',marginBottom:7}}>
+                      <input
+                        ref={el => { if(el) inputRefs.current[`${activeWk}-${day.dow}-${ti}`] = el }}
+                        defaultValue={task}
+                        placeholder={isBufferDay?`Telafi görevi ${ti+1} (isteğe bağlı)`:`${DOW_FULL[day.dow]} görevi ${ti+1}`}
+                        style={{...s.input,flex:1,borderColor:isBufferDay?'rgba(251,191,36,0.25)':'var(--border)'}}
+                      />
+                      <button onClick={()=>removeTask(activeWk,day.dow,ti)} style={{background:'none',border:'none',color:'var(--text3)',cursor:'pointer',fontSize:16,padding:'0 4px',flexShrink:0}}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )
+            })}
           </div>
         )}
 
+        {/* Özet */}
         <div style={{background:'rgba(124,111,247,0.07)',border:'1.5px solid rgba(124,111,247,0.2)',borderRadius:14,padding:'10px 14px',marginBottom:16,fontSize:12,color:'var(--text2)'}}>
           <b style={{color:'var(--accent)'}}>{weekCount} hafta</b> · <b style={{color:'var(--accent)'}}>{weekCount*7} gün</b>
-          {bufferDay!=null && <span style={{color:'var(--mid)'}}> · ⚡ {DOW_TR[bufferDay]} telafi günü</span>}
+          {totalWithBuffer>0 && <span style={{color:'var(--mid)'}}> · ⚡ {totalWithBuffer} haftada telafi günü var</span>}
         </div>
 
         <div style={{display:'flex',gap:10}}>
