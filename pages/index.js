@@ -1617,6 +1617,8 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
 
   const weekTasks = tasks.filter(t => t.week_number === activeWeek)
   const weekName  = weekTasks[0]?.week_name || `${activeWeek}. Hafta`
+  // Her haftanın telafi günü task'lardaki week_buffer_day'den
+  const bufferDow = weekTasks.find(t=>t.week_buffer_day!=null)?.week_buffer_day ?? null
 
   // O haftanın aktif günleri
   const activeDows = [1,2,3,4,5,6,0].filter(d => new Set(weekTasks.flatMap(t=>t.active_days||[])).has(d))
@@ -1631,8 +1633,9 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
         {allWeekNums.map(wn => {
           const wTasks = tasks.filter(t=>t.week_number===wn)
           const wName  = wTasks[0]?.week_name || `${wn}. Hafta`
-          const isCur  = wn===currentWeekNum
-          const isMs   = wn%4===0
+          const isCur   = wn===currentWeekNum
+          const isMs    = wn%4===0
+          const wHasBuf = tasks.filter(t=>t.week_number===wn).some(t=>t.week_buffer_day!=null)
           return (
             <button key={wn} onClick={()=>setActiveWeek(wn)} style={{
               flexShrink:0, padding:'6px 12px', borderRadius:10, cursor:'pointer', fontFamily:'inherit',
@@ -1643,7 +1646,8 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
             }}>
               {wName}
               {isCur && wn!==activeWeek && <span style={{ position:'absolute', top:-4, right:-4, width:7, height:7, borderRadius:'50%', background:'var(--good)', display:'block' }}/>}
-              {isMs && !isCur && wn!==activeWeek && <span style={{ position:'absolute', top:-4, right:-4, fontSize:9 }}>🏆</span>}
+              {wHasBuf && wn!==activeWeek && !isCur && <span style={{ position:'absolute', top:-5, right:2, fontSize:9 }}>⚡</span>}
+              {isMs && !isCur && !wHasBuf && wn!==activeWeek && <span style={{ position:'absolute', top:-4, right:-4, fontSize:9 }}>🏆</span>}
             </button>
           )
         })}
@@ -1668,17 +1672,18 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
       {activeDows.length===0 ? (
         <div style={{ textAlign:'center', padding:'20px 0', color:'var(--text3)', fontSize:13 }}>Bu haftada görev yok</div>
       ) : activeDows.map(dow => {
+        const isBufferDay = bufferDow!=null && bufferDow===dow
         const dayTasks = weekTasks.filter(t => t.active_days?.includes(dow) && !t.is_buffer)
-        if (!dayTasks.length) return null
-        const [dayOpen, setDayOpen] = [true, ()=>{}] // hep açık
+        if (!dayTasks.length && !isBufferDay) return null
         const dayName = DOW_FULL[dow]
         const dayDone = isCurrent ? dayTasks.filter(t=>todayLogs.find(l=>l.task_id===t.id)).length : 0
         const isToday = new Date().getDay()===dow && isCurrent
 
         return (
           <div key={dow} style={{ marginBottom:10 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6, padding:'0 2px' }}>
-              <span style={{ fontSize:11, fontWeight:700, color: isToday?'var(--accent)':'var(--text3)', textTransform:'uppercase', letterSpacing:'.06em' }}>{dayName}</span>
+            <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:6, padding:'0 2px', flexWrap:'wrap' }}>
+              <span style={{ fontSize:11, fontWeight:700, color: isBufferDay?'var(--mid)':isToday?'var(--accent)':'var(--text3)', textTransform:'uppercase', letterSpacing:'.06em' }}>{dayName}</span>
+              {isBufferDay && <span style={{ fontSize:10, background:'rgba(251,191,36,0.12)', color:'var(--mid)', borderRadius:99, padding:'1px 8px', fontWeight:700 }}>⚡ Telafi Günü</span>}
               {isToday && <span style={{ fontSize:10, background:'rgba(124,111,247,0.15)', color:'var(--accent)', borderRadius:99, padding:'1px 7px', fontWeight:600 }}>Bugün · {dayDone}/{dayTasks.length}</span>}
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
@@ -1712,17 +1717,17 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
                           onEnd={()=>{ if(confirm(`"${t.name}" sonlandırılsın mı?`)) onEndTask(t.id) }}
                           onRestore={()=>onRestoreTask(t.id)}
                           isPro={true}
-                          bufferDay={goal?.buffer_day}
+                          bufferDay={bufferDow}
                           goalStartDate={goal?.start_date}
                           activeWeekNum={activeWeek}
                           onTransferToTomorrow={onTransferTask ? ()=>{
                             const tomorrow = addDays(today, 1)
                             onTransferTask(t.id, tomorrow)
                           } : null}
-                          onTransferToBuffer={onTransferTask && goal?.buffer_day!=null ? ()=>{
+                          onTransferToBuffer={onTransferTask && bufferDow!=null ? ()=>{
                             // Bu haftanın telafi gününü bul
                             const wStart = new Date(addDays(goal.start_date,(activeWeek-1)*7)+'T00:00:00')
-                            const bufDow = goal.buffer_day
+                            const bufDow = bufferDow
                             // Haftanın başından itibaren telafi gününü bul
                             let bufDate = null
                             for(let i=0;i<7;i++){
