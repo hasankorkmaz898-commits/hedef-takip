@@ -873,9 +873,11 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                               {isEnded?'■':isSkipped?'–':q?QSym[q]:''}
                             </div>
                             <div style={{ flex:1 }}>
-                              <div style={{ fontSize:13, fontWeight:500, textDecoration:(q||isEnded)?'line-through':'none', color:q||isSkipped||isEnded?'var(--text3)':'var(--text)' }}>{t.name}</div>
-                              {isEnded && <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>Sonlandırıldı · {t.ended_at}</div>}
-                              {isSkipped && <div style={{ fontSize:10, color:'var(--mid)', marginTop:2 }}>Bugün atlandı</div>}
+                              <div style={{ display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                                <span style={{ fontSize:13, fontWeight:500, textDecoration:(q||isEnded)?'line-through':'none', color:q||isSkipped||isEnded?'var(--text3)':'var(--text)' }}>{t.name}</span>
+                                {isEnded && <span style={{ fontSize:10, color:'var(--text3)', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:99, padding:'1px 7px' }}>sonlandırıldı</span>}
+                                {isSkipped && <span style={{ fontSize:10, color:'var(--mid)', background:'rgba(251,191,36,0.1)', borderRadius:99, padding:'1px 7px' }}>bugün atlandı</span>}
+                              </div>
                               {!isActive && !isSkipped && !isEnded && activeDayLabels && <div style={{ fontSize:10, color:'var(--text3)', marginTop:2 }}>{activeDayLabels}</div>}
                             </div>
                             {q && isActive && <span style={{ fontSize:11, fontWeight:700, color:`var(--${q})`, background:qBg[q], padding:'2px 7px', borderRadius:99 }}>{QLabel[q]}</span>}
@@ -1833,11 +1835,16 @@ function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, 
   const isSkipped = status === 'skipped'
   const isEnded   = status === 'ended'
   const isInactive= status === 'inactive'
+  const btnRef    = useRef(null)
+  const [openUp,  setOpenUp] = useState(false)
 
-  // Dışarı tıklanınca kapat
   useEffect(() => {
     if (!isOpen) return
-    const close = (e) => { setOpenId(null) }
+    if (btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setOpenUp(r.bottom > window.innerHeight * 0.55)
+    }
+    const close = () => setOpenId(null)
     setTimeout(() => document.addEventListener('click', close), 0)
     return () => document.removeEventListener('click', close)
   }, [isOpen])
@@ -1845,6 +1852,7 @@ function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, 
   return (
     <div style={{ position:'relative', flexShrink:0 }} onClick={e=>e.stopPropagation()}>
       <button
+        ref={btnRef}
         onClick={()=>setOpenId(isOpen ? null : taskId)}
         style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', padding:'4px 7px', borderRadius:6, display:'flex', flexDirection:'column', alignItems:'center', gap:3.5 }}
         title="Seçenekler"
@@ -1856,7 +1864,8 @@ function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, 
 
       {isOpen && (
         <div style={{
-          position:'absolute', right:0, top:'calc(100% + 4px)',
+          position:'absolute', right:0,
+          ...(openUp ? { bottom:'calc(100% + 4px)' } : { top:'calc(100% + 4px)' }),
           background:'var(--surface)', border:'1.5px solid var(--border)',
           borderRadius:14, padding:6, zIndex:500, minWidth:192,
           boxShadow:'0 8px 32px rgba(0,0,0,0.45)'
