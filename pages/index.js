@@ -1836,36 +1836,36 @@ function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, 
   const isEnded   = status === 'ended'
   const isInactive= status === 'inactive'
   const btnRef    = useRef(null)
-  const dropRef   = useRef(null)
+  const [pos, setPos] = useState({top:0, right:0})
+
+  function handleOpen() {
+    if (!isOpen && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect()
+      setPos({
+        top:  r.bottom + 4,
+        right: window.innerWidth - r.right,
+        btnTop: r.top,
+      })
+    }
+    setOpenId(isOpen ? null : taskId)
+  }
 
   useEffect(() => {
     if (!isOpen) return
-    // Menü render olduktan sonra pozisyonu ayarla
-    const adjust = () => {
-      if (!btnRef.current || !dropRef.current) return
-      const btn  = btnRef.current.getBoundingClientRect()
-      const dropH = dropRef.current.offsetHeight || 150
-      const spaceBelow = window.innerHeight - btn.bottom
-      if (spaceBelow < dropH + 12) {
-        dropRef.current.style.bottom = 'calc(100% + 4px)'
-        dropRef.current.style.top    = 'auto'
-      } else {
-        dropRef.current.style.top    = 'calc(100% + 4px)'
-        dropRef.current.style.bottom = 'auto'
-      }
-    }
-    // Kısa gecikme ile çalıştır — DOM render tamamlansın
-    const t = setTimeout(adjust, 0)
     const close = () => setOpenId(null)
     setTimeout(() => document.addEventListener('click', close), 0)
-    return () => { clearTimeout(t); document.removeEventListener('click', close) }
+    return () => document.removeEventListener('click', close)
   }, [isOpen])
+
+  // Menü yüksekliği: içeriklere göre yaklaşık
+  const menuH = isPro ? 130 : (isSkipped || isEnded ? 60 : 110)
+  const openUp = pos.btnTop > window.innerHeight * 0.5
 
   return (
     <div style={{ position:'relative', flexShrink:0 }} onClick={e=>e.stopPropagation()}>
       <button
         ref={btnRef}
-        onClick={()=>setOpenId(isOpen ? null : taskId)}
+        onClick={handleOpen}
         style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', padding:'4px 7px', borderRadius:6, display:'flex', flexDirection:'column', alignItems:'center', gap:3.5 }}
         title="Seçenekler"
       >
@@ -1875,13 +1875,16 @@ function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, 
       </button>
 
       {isOpen && (
-        <div ref={dropRef} style={{
-          position:'absolute', right:0, top:'calc(100% + 4px)',
+        <div style={{
+          position:'fixed',
+          right: pos.right,
+          ...(openUp
+            ? { bottom: window.innerHeight - pos.btnTop + 4, top:'auto' }
+            : { top: pos.top, bottom:'auto' }),
           background:'var(--surface)', border:'1.5px solid var(--border)',
-          borderRadius:14, padding:6, zIndex:500, minWidth:192,
-          boxShadow:'0 8px 32px rgba(0,0,0,0.45)'
+          borderRadius:14, padding:6, zIndex:9999, minWidth:192,
+          boxShadow:'0 8px 32px rgba(0,0,0,0.5)'
         }}>
-          {/* Pro plan transfer seçenekleri */}
           {isPro && isActive && onTransferToTomorrow && (
             <>
               <button onClick={()=>{setOpenId(null);onTransferToTomorrow()}} style={menuBtn}>
