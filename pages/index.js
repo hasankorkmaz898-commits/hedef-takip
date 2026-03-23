@@ -1836,18 +1836,15 @@ function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, 
   const isEnded   = status === 'ended'
   const isInactive= status === 'inactive'
   const btnRef    = useRef(null)
-  const [pos, setPos] = useState({top:0, right:0})
+  const [pos, setPos] = useState(null)
 
   function handleOpen() {
-    if (!isOpen && btnRef.current) {
+    if (isOpen) { setOpenId(null); return }
+    if (btnRef.current) {
       const r = btnRef.current.getBoundingClientRect()
-      setPos({
-        top:  r.bottom + 4,
-        right: window.innerWidth - r.right,
-        btnTop: r.top,
-      })
+      setPos({ top: r.bottom + 6, right: window.innerWidth - r.right, btnTop: r.top })
     }
-    setOpenId(isOpen ? null : taskId)
+    setOpenId(taskId)
   }
 
   useEffect(() => {
@@ -1857,72 +1854,80 @@ function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, 
     return () => document.removeEventListener('click', close)
   }, [isOpen])
 
-  // Menü yüksekliği: içeriklere göre yaklaşık
-  const menuH = isPro ? 130 : (isSkipped || isEnded ? 60 : 110)
-  const openUp = pos.btnTop > window.innerHeight * 0.5
+  if (!isOpen || !pos) return (
+    <div style={{ position:'relative', flexShrink:0 }} onClick={e=>e.stopPropagation()}>
+      <button ref={btnRef} onClick={handleOpen}
+        style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', padding:'6px 8px', borderRadius:6, display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
+        <span style={{ display:'block', width:4, height:4, borderRadius:'50%', background:'currentColor' }}/>
+        <span style={{ display:'block', width:4, height:4, borderRadius:'50%', background:'currentColor' }}/>
+        <span style={{ display:'block', width:4, height:4, borderRadius:'50%', background:'currentColor' }}/>
+      </button>
+    </div>
+  )
+
+  const openUp = pos.btnTop > window.innerHeight * 0.55
 
   return (
     <div style={{ position:'relative', flexShrink:0 }} onClick={e=>e.stopPropagation()}>
-      <button
-        ref={btnRef}
-        onClick={handleOpen}
-        style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', padding:'4px 7px', borderRadius:6, display:'flex', flexDirection:'column', alignItems:'center', gap:3.5 }}
-        title="Seçenekler"
-      >
-        <span style={{ display:'block', width:3.5, height:3.5, borderRadius:'50%', background:'currentColor' }}/>
-        <span style={{ display:'block', width:3.5, height:3.5, borderRadius:'50%', background:'currentColor' }}/>
-        <span style={{ display:'block', width:3.5, height:3.5, borderRadius:'50%', background:'currentColor' }}/>
+      <button ref={btnRef} onClick={handleOpen}
+        style={{ background:'var(--accent)', border:'none', cursor:'pointer', color:'#fff', padding:'6px 8px', borderRadius:6, display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
+        <span style={{ display:'block', width:4, height:4, borderRadius:'50%', background:'currentColor' }}/>
+        <span style={{ display:'block', width:4, height:4, borderRadius:'50%', background:'currentColor' }}/>
+        <span style={{ display:'block', width:4, height:4, borderRadius:'50%', background:'currentColor' }}/>
       </button>
 
-      {isOpen && (
-        <div style={{
-          position:'fixed',
-          right: pos.right,
-          ...(openUp
-            ? { bottom: window.innerHeight - pos.btnTop + 4, top:'auto' }
-            : { top: pos.top, bottom:'auto' }),
-          background:'var(--surface)', border:'1.5px solid var(--border)',
-          borderRadius:14, padding:6, zIndex:9999, minWidth:192,
-          boxShadow:'0 8px 32px rgba(0,0,0,0.5)'
-        }}>
-          {isPro && isActive && onTransferToTomorrow && (
-            <>
-              <button onClick={()=>{setOpenId(null);onTransferToTomorrow()}} style={menuBtn}>
-                <span style={{ fontSize:15 }}>📅</span> Yarına aktar
+      {/* Portal gibi davransın — fixed + çok yüksek zIndex */}
+      <div onClick={e=>e.stopPropagation()} style={{
+        position:'fixed',
+        right: pos.right,
+        ...(openUp
+          ? { bottom: window.innerHeight - pos.btnTop + 6, top:'auto' }
+          : { top: pos.top, bottom:'auto' }),
+        zIndex: 999999,
+        minWidth: 210,
+        background:'var(--surface)',
+        border:'2px solid var(--border)',
+        borderRadius:16,
+        padding:8,
+        boxShadow:'0 12px 40px rgba(0,0,0,0.7)',
+      }}>
+        {isPro && isActive && onTransferToTomorrow && (
+          <>
+            <button onClick={()=>{setOpenId(null);onTransferToTomorrow()}} style={menuBtn}>
+              <span style={{ fontSize:16 }}>📅</span> Yarına aktar
+            </button>
+            {onTransferToBuffer && (
+              <button onClick={()=>{setOpenId(null);onTransferToBuffer()}} style={menuBtn}>
+                <span style={{ fontSize:16 }}>⚡</span> Telafi gününe aktar
               </button>
-              {onTransferToBuffer && (
-                <button onClick={()=>{setOpenId(null);onTransferToBuffer()}} style={menuBtn}>
-                  <span style={{ fontSize:15 }}>⚡</span> Telafi gününe aktar
-                </button>
-              )}
-              <div style={{ height:1, background:'var(--border)', margin:'4px 0' }}/>
-            </>
-          )}
-          {(isActive || isInactive) && !isPro && (
-            <button onClick={()=>{setOpenId(null);onSkip()}} style={menuBtn}>
-              <span style={{ fontSize:15 }}>⏭</span> Bugün atla
+            )}
+            <div style={{ height:1, background:'var(--border)', margin:'6px 0' }}/>
+          </>
+        )}
+        {(isActive || isInactive) && !isPro && (
+          <button onClick={()=>{setOpenId(null);onSkip()}} style={menuBtn}>
+            <span style={{ fontSize:16 }}>⏭</span> Bugün atla
+          </button>
+        )}
+        {isSkipped && (
+          <button onClick={()=>{setOpenId(null);onUnskip()}} style={menuBtn}>
+            <span style={{ fontSize:16 }}>↩</span> Atlamayı geri al
+          </button>
+        )}
+        {!isEnded && (
+          <>
+            <div style={{ height:1, background:'var(--border)', margin:'6px 0' }}/>
+            <button onClick={()=>{setOpenId(null);onEnd()}} style={{ ...menuBtn, color:'var(--bad)' }}>
+              <span style={{ fontSize:16 }}>⏹</span> Görevi sonlandır
             </button>
-          )}
-          {isSkipped && (
-            <button onClick={()=>{setOpenId(null);onUnskip()}} style={menuBtn}>
-              <span style={{ fontSize:15 }}>↩</span> Atlamayı geri al
-            </button>
-          )}
-          {!isEnded && (
-            <>
-              {!isPro && <div style={{ height:1, background:'var(--border)', margin:'4px 0' }}/>}
-              <button onClick={()=>{setOpenId(null);onEnd()}} style={{ ...menuBtn, color:'var(--bad)' }}>
-                <span style={{ fontSize:15 }}>⏹</span> Görevi sonlandır
-              </button>
-            </>
-          )}
-          {isEnded && (
-            <button onClick={()=>{setOpenId(null);onRestore()}} style={{ ...menuBtn, color:'var(--good)' }}>
-              <span style={{ fontSize:15 }}>▶</span> Görevi geri al
-            </button>
-          )}
-        </div>
-      )}
+          </>
+        )}
+        {isEnded && (
+          <button onClick={()=>{setOpenId(null);onRestore()}} style={{ ...menuBtn, color:'var(--good)' }}>
+            <span style={{ fontSize:16 }}>▶</span> Görevi geri al
+          </button>
+        )}
+      </div>
     </div>
   )
 }
