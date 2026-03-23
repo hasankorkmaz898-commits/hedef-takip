@@ -1836,17 +1836,29 @@ function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, 
   const isEnded   = status === 'ended'
   const isInactive= status === 'inactive'
   const btnRef    = useRef(null)
-  const [openUp,  setOpenUp] = useState(false)
+  const dropRef   = useRef(null)
 
   useEffect(() => {
     if (!isOpen) return
-    if (btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect()
-      setOpenUp(r.bottom > window.innerHeight * 0.55)
+    // Menü render olduktan sonra pozisyonu ayarla
+    const adjust = () => {
+      if (!btnRef.current || !dropRef.current) return
+      const btn  = btnRef.current.getBoundingClientRect()
+      const dropH = dropRef.current.offsetHeight || 150
+      const spaceBelow = window.innerHeight - btn.bottom
+      if (spaceBelow < dropH + 12) {
+        dropRef.current.style.bottom = 'calc(100% + 4px)'
+        dropRef.current.style.top    = 'auto'
+      } else {
+        dropRef.current.style.top    = 'calc(100% + 4px)'
+        dropRef.current.style.bottom = 'auto'
+      }
     }
+    // Kısa gecikme ile çalıştır — DOM render tamamlansın
+    const t = setTimeout(adjust, 0)
     const close = () => setOpenId(null)
     setTimeout(() => document.addEventListener('click', close), 0)
-    return () => document.removeEventListener('click', close)
+    return () => { clearTimeout(t); document.removeEventListener('click', close) }
   }, [isOpen])
 
   return (
@@ -1863,9 +1875,8 @@ function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, 
       </button>
 
       {isOpen && (
-        <div style={{
-          position:'absolute', right:0,
-          ...(openUp ? { bottom:'calc(100% + 4px)' } : { top:'calc(100% + 4px)' }),
+        <div ref={dropRef} style={{
+          position:'absolute', right:0, top:'calc(100% + 4px)',
           background:'var(--surface)', border:'1.5px solid var(--border)',
           borderRadius:14, padding:6, zIndex:500, minWidth:192,
           boxShadow:'0 8px 32px rgba(0,0,0,0.45)'
