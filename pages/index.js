@@ -1829,105 +1829,67 @@ const menuBtn = {
   fontWeight:500, cursor:'pointer', fontFamily:'inherit', textAlign:'left'
 }
 
+// Görev satırı içinde inline action butonları
 function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, onRestore, isPro, onTransferToTomorrow, onTransferToBuffer, bufferDay }) {
   const isOpen    = openId === taskId
   const isActive  = status === 'active'
   const isSkipped = status === 'skipped'
   const isEnded   = status === 'ended'
   const isInactive= status === 'inactive'
-  const btnRef    = useRef(null)
-  const [pos, setPos] = useState(null)
-
-  function handleOpen() {
-    if (isOpen) { setOpenId(null); return }
-    if (btnRef.current) {
-      const r = btnRef.current.getBoundingClientRect()
-      setPos({ top: r.bottom + 6, right: window.innerWidth - r.right, btnTop: r.top })
-    }
-    setOpenId(taskId)
-  }
 
   useEffect(() => {
     if (!isOpen) return
-    const close = () => setOpenId(null)
+    const close = (e) => {
+      if (!e.target.closest(`[data-taskmenu="${taskId}"]`)) setOpenId(null)
+    }
     setTimeout(() => document.addEventListener('click', close), 0)
     return () => document.removeEventListener('click', close)
   }, [isOpen])
 
-  if (!isOpen || !pos) return (
-    <div style={{ position:'relative', flexShrink:0 }} onClick={e=>e.stopPropagation()}>
-      <button ref={btnRef} onClick={handleOpen}
-        style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', padding:'6px 8px', borderRadius:6, display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
-        <span style={{ display:'block', width:4, height:4, borderRadius:'50%', background:'currentColor' }}/>
-        <span style={{ display:'block', width:4, height:4, borderRadius:'50%', background:'currentColor' }}/>
-        <span style={{ display:'block', width:4, height:4, borderRadius:'50%', background:'currentColor' }}/>
-      </button>
-    </div>
+  const pill = (label, icon, onClick, color) => (
+    <button
+      onClick={(e)=>{ e.stopPropagation(); setOpenId(null); onClick() }}
+      style={{
+        display:'flex', alignItems:'center', gap:5,
+        padding:'5px 10px', borderRadius:99,
+        background: color==='bad'?'rgba(248,113,113,0.12)':color==='good'?'rgba(74,222,128,0.12)':color==='mid'?'rgba(251,191,36,0.12)':'var(--surface2)',
+        border: `1.5px solid ${color==='bad'?'rgba(248,113,113,0.35)':color==='good'?'rgba(74,222,128,0.35)':color==='mid'?'rgba(251,191,36,0.35)':'var(--border)'}`,
+        color: color==='bad'?'var(--bad)':color==='good'?'var(--good)':color==='mid'?'var(--mid)':'var(--text2)',
+        fontSize:12, fontWeight:600, cursor:'pointer', fontFamily:'inherit', whiteSpace:'nowrap', flexShrink:0,
+      }}
+    >
+      <span style={{fontSize:13}}>{icon}</span>{label}
+    </button>
   )
 
-  const openUp = pos.btnTop > window.innerHeight * 0.55
-
   return (
-    <div style={{ position:'relative', flexShrink:0 }} onClick={e=>e.stopPropagation()}>
-      <button ref={btnRef} onClick={handleOpen}
-        style={{ background:'var(--accent)', border:'none', cursor:'pointer', color:'#fff', padding:'6px 8px', borderRadius:6, display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
-        <span style={{ display:'block', width:4, height:4, borderRadius:'50%', background:'currentColor' }}/>
-        <span style={{ display:'block', width:4, height:4, borderRadius:'50%', background:'currentColor' }}/>
-        <span style={{ display:'block', width:4, height:4, borderRadius:'50%', background:'currentColor' }}/>
-      </button>
-
-      {/* Portal gibi davransın — fixed + çok yüksek zIndex */}
-      <div onClick={e=>e.stopPropagation()} style={{
-        position:'fixed',
-        right: pos.right,
-        ...(openUp
-          ? { bottom: window.innerHeight - pos.btnTop + 6, top:'auto' }
-          : { top: pos.top, bottom:'auto' }),
-        zIndex: 999999,
-        minWidth: 210,
-        background:'var(--surface)',
-        border:'2px solid var(--border)',
-        borderRadius:16,
-        padding:8,
-        boxShadow:'0 12px 40px rgba(0,0,0,0.7)',
-      }}>
-        {isPro && isActive && onTransferToTomorrow && (
-          <>
-            <button onClick={()=>{setOpenId(null);onTransferToTomorrow()}} style={menuBtn}>
-              <span style={{ fontSize:16 }}>📅</span> Yarına aktar
-            </button>
-            {onTransferToBuffer && (
-              <button onClick={()=>{setOpenId(null);onTransferToBuffer()}} style={menuBtn}>
-                <span style={{ fontSize:16 }}>⚡</span> Telafi gününe aktar
-              </button>
-            )}
-            <div style={{ height:1, background:'var(--border)', margin:'6px 0' }}/>
-          </>
-        )}
-        {(isActive || isInactive) && !isPro && (
-          <button onClick={()=>{setOpenId(null);onSkip()}} style={menuBtn}>
-            <span style={{ fontSize:16 }}>⏭</span> Bugün atla
-          </button>
-        )}
-        {isSkipped && (
-          <button onClick={()=>{setOpenId(null);onUnskip()}} style={menuBtn}>
-            <span style={{ fontSize:16 }}>↩</span> Atlamayı geri al
-          </button>
-        )}
-        {!isEnded && (
-          <>
-            <div style={{ height:1, background:'var(--border)', margin:'6px 0' }}/>
-            <button onClick={()=>{setOpenId(null);onEnd()}} style={{ ...menuBtn, color:'var(--bad)' }}>
-              <span style={{ fontSize:16 }}>⏹</span> Görevi sonlandır
-            </button>
-          </>
-        )}
-        {isEnded && (
-          <button onClick={()=>{setOpenId(null);onRestore()}} style={{ ...menuBtn, color:'var(--good)' }}>
-            <span style={{ fontSize:16 }}>▶</span> Görevi geri al
-          </button>
-        )}
-      </div>
+    <div data-taskmenu={taskId} style={{ display:'flex', alignItems:'center', gap:5, flexShrink:0 }} onClick={e=>e.stopPropagation()}>
+      {!isOpen ? (
+        // 3 nokta butonu
+        <button
+          onClick={()=>setOpenId(taskId)}
+          style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', padding:'4px 7px', borderRadius:6, display:'flex', flexDirection:'column', alignItems:'center', gap:3.5, flexShrink:0 }}
+        >
+          <span style={{ display:'block', width:3.5, height:3.5, borderRadius:'50%', background:'currentColor' }}/>
+          <span style={{ display:'block', width:3.5, height:3.5, borderRadius:'50%', background:'currentColor' }}/>
+          <span style={{ display:'block', width:3.5, height:3.5, borderRadius:'50%', background:'currentColor' }}/>
+        </button>
+      ) : (
+        // Inline aksiyon butonları
+        <>
+          {isPro && isActive && onTransferToTomorrow && pill('Yarın', '📅', onTransferToTomorrow, 'mid')}
+          {isPro && isActive && onTransferToBuffer    && pill('Telafi', '⚡', onTransferToBuffer, 'mid')}
+          {(isActive || isInactive) && !isPro         && pill('Atla', '⏭', onSkip, '')}
+          {isSkipped                                  && pill('Geri al', '↩', onUnskip, 'good')}
+          {!isEnded                                   && pill('Sonlandır', '⏹', ()=>{ if(confirm(`"Görevi sonlandır" — geçmiş korunur`)) onEnd() }, 'bad')}
+          {isEnded                                    && pill('Geri al', '▶', onRestore, 'good')}
+          {/* Kapat */}
+          <button
+            onClick={()=>setOpenId(null)}
+            style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', fontSize:16, padding:'2px 4px', lineHeight:1, flexShrink:0 }}
+          >✕</button>
+        </>
+      )}
     </div>
   )
 }
