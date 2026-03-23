@@ -33,7 +33,7 @@ const daysLeft   = (s,t) => Math.max(0, t-daysElapsed(s))
 
 function taskActiveOnDay(task, ds) {
   // extra_dates: bu tarihte özel olarak aktif (ertesi güne/telafi gününe aktarıldı)
-  if (task.extra_dates?.includes(ds)) return true
+  if (task.extra_dates?.map(String).includes(String(ds))) return true
   // Görev oluşturulmadan önceki günlerde aktif değil
   if (task.created_at) {
     const taskDate = task.created_at.slice(0,10)
@@ -55,7 +55,8 @@ function activeTasks(tasks, ds) {
 
 function taskStatus(task, ds) {
   if (task.ended_at && ds >= task.ended_at) return 'ended'
-  if (task.skipped_dates?.includes(ds)) return 'skipped'
+  if (task.extra_dates?.map(String).includes(String(ds))) return 'active'
+  if (task.skipped_dates?.map(String).includes(String(ds))) return 'skipped'
   if (!taskActiveOnDay(task, ds)) return 'inactive'
   return 'active'
 }
@@ -354,17 +355,19 @@ export default function Home() {
     setTasks(p=>({...p,[goalId]:p[goalId].map(x=>x.id===taskId?{...x,skipped_dates:skipped}:x)}))
   }
 
-  async function transferTaskTo(goalId, taskId, targetDate) {
-    // 1. Bugünü skipped_dates'e ekle
-    // 2. targetDate'i extra_dates'e ekle
+  function transferTaskTo(goalId, taskId, targetDate) {
     const today = todayStr()
     const t = (tasks[goalId]||[]).find(x=>x.id===taskId)
     if (!t) return
-    const skipped    = [...new Set([...(t.skipped_dates||[]), today])]
-    const extraDates = [...new Set([...(t.extra_dates||[]), targetDate])]
-    await supabase.from('tasks').update({ skipped_dates:skipped, extra_dates:extraDates }).eq('id', taskId)
+    const skipped    = [...new Set([...(t.skipped_dates||[]).map(String), String(today)])]
+    const extraDates = [...new Set([...(t.extra_dates||[]).map(String), String(targetDate)])]
+    // Anlık UI güncelle
     setTasks(p=>({...p,[goalId]:p[goalId].map(x=>x.id===taskId?{...x,skipped_dates:skipped,extra_dates:extraDates}:x)}))
-    showToast(`📅 Görev ${targetDate} tarihine taşındı`)
+    // Arka planda DB'ye kaydet
+    supabase.from('tasks').update({ skipped_dates:skipped, extra_dates:extraDates }).eq('id', taskId)
+    const DOW_NAMES = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi']
+    const d = new Date(targetDate+'T00:00:00')
+    showToast(`📅 ${t.name} → ${DOW_NAMES[d.getDay()]} aktarıldı`)
   }
 
   async function endTask(goalId, taskId) {
@@ -1620,8 +1623,21 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
   // Her haftanın telafi günü task'lardaki week_buffer_day'den
   const bufferDow = weekTasks.find(t=>t.week_buffer_day!=null)?.week_buffer_day ?? null
 
-  // O haftanın aktif günleri
-  const activeDows = [1,2,3,4,5,6,0].filter(d => new Set(weekTasks.flatMap(t=>t.active_days||[])).has(d))
+  // Bu haftanın tarih aralığı
+  const wStart = goal?.start_date ? addDays(goal.start_date,(activeWeek-1)*7) : todayStr()
+  const wEnd   = goal?.start_date ? addDays(goal.start_date, activeWeek*7)    : todayStr()
+
+  // O haftanın aktif günleri: normal active_days + bu haftaya aktarılan extra_dates + telafi günü
+  const extraDowsThisWeek = new Set(
+    tasks.flatMap(t=>(t.extra_dates||[]).map(String))
+      .filter(d=>d>=wStart && d<wEnd)
+      .map(d=>new Date(d+'T00:00:00').getDay())
+  )
+  const activeDows = [1,2,3,4,5,6,0].filter(d =>
+    new Set(weekTasks.flatMap(t=>t.active_days||[])).has(d) ||
+    extraDowsThisWeek.has(d) ||
+    (bufferDow!=null && d===bufferDow)
+  )
 
   // Bugün bu haftada mı?
   const isCurrent = activeWeek === currentWeekNum
@@ -1673,7 +1689,19 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
         <div style={{ textAlign:'center', padding:'20px 0', color:'var(--text3)', fontSize:13 }}>Bu haftada görev yok</div>
       ) : activeDows.map(dow => {
         const isBufferDay = bufferDow!=null && bufferDow===dow
-        const dayTasks = weekTasks.filter(t => t.active_days?.includes(dow) && !t.is_buffer)
+        // Bu günün tam tarihini bul
+        let dowDate = null
+        for(let i=0;i<7;i++){
+          const d = addDays(wStart,i)
+          if(new Date(d+'T00:00:00').getDay()===dow){ dowDate=d; break }
+        }
+        // Normal görevler + bu güne aktarılanlar (tüm task'lardan)
+        const normalTasks = weekTasks.filter(t => t.active_days?.includes(dow) && !t.is_buffer)
+        const transferredIn = dowDate ? tasks.filter(t =>
+          !t.active_days?.includes(dow) &&
+          (t.extra_dates||[]).map(String).includes(String(dowDate))
+        ) : []
+        const dayTasks = [...normalTasks, ...transferredIn]
         if (!dayTasks.length && !isBufferDay) return null
         const dayName = DOW_FULL[dow]
         const dayDone = isCurrent ? dayTasks.filter(t=>todayLogs.find(l=>l.task_id===t.id)).length : 0
@@ -1692,6 +1720,7 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
                 const isActive = tStatus==='active'
                 const isSkipped= tStatus==='skipped'
                 const isEnded  = tStatus==='ended'
+                const isTransferred = dowDate && transferredIn.includes(t)
                 const log = todayLogs.find(l=>l.task_id===t.id)
                 const q   = log?.quality
                 const qBg    = { good:'var(--good-bg)', mid:'var(--mid-bg)', bad:'var(--bad-bg)' }
@@ -1707,6 +1736,7 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
                         </div>
                         <div style={{ flex:1, fontSize:13, fontWeight:500, textDecoration:(q||isEnded)?'line-through':'none', color:q||isSkipped||isEnded?'var(--text3)':'var(--text)' }}>
                           {t.name}
+                          {isTransferred && <span style={{ fontSize:10, color:'var(--mid)', background:'rgba(251,191,36,0.1)', borderRadius:99, padding:'1px 6px', marginLeft:6 }}>📅 aktarıldı</span>}
                           {isSkipped && <span style={{ fontSize:10, color:'var(--mid)', marginLeft:6 }}>atlandı</span>}
                         </div>
                         {q && isActive && <span style={{ fontSize:10, fontWeight:700, color:`var(--${q})`, background:qBg[q], padding:'2px 7px', borderRadius:99 }}>{{good:'İyi',mid:'Orta',bad:'Kötü'}[q]}</span>}
