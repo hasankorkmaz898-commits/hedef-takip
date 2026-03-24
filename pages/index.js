@@ -79,6 +79,18 @@ function overallScore(tasks, logs, startDate, totalDays) {
   return sum / totalDays
 }
 
+// Aktif günlerdeki ortalama performans — ETA için doğru metrik
+function avgDailyRate(tasks, logs, startDate) {
+  const e = daysElapsed(startDate); if (!e) return 0
+  let sum = 0, cnt = 0
+  for (let i=0;i<e;i++) {
+    const ds = addDays(startDate,i)
+    const sc = dayScore(tasks, logs, ds)
+    if (sc >= 0) { sum += sc; cnt++ }
+  }
+  return cnt ? sum / cnt : 0
+}
+
 function getStreak(tasks, logs, startDate) {
   let s = 0
   for (let i=0;i<365;i++) {
@@ -117,16 +129,34 @@ function getEarnedBadges(tasks, logs, startDate, totalDays) {
 }
 
 function getETA(tasks, logs, startDate, totalDays) {
-  const op = overallScore(tasks, logs, startDate, totalDays)
+  const op   = overallScore(tasks, logs, startDate, totalDays)
   if (op>=1) return { text:'Hedef tamamlandı! 🎉', color:'var(--good)' }
-  const e = daysElapsed(startDate)
-  if (!e)   return { text:'Bugün başladın, devam et!', color:'var(--text2)' }
-  const rate = op/e
-  if (!rate) return { text:'Henüz veri yok', color:'var(--text2)' }
-  const need = Math.ceil((1-op)/rate)
+  const e    = daysElapsed(startDate)
   const left = daysLeft(startDate, totalDays)
-  if (need<=left) return { text:`Mevcut tempo ile ~${need} günde tamamlanır`, color:'var(--good)' }
-  return { text:`Mevcut tempo ile ${need} gün gerekiyor (${need-left} gün gecikme)`, color:'var(--mid)' }
+  if (!e) return { text:'Bugün başladın, devam et!', color:'var(--text2)' }
+
+  // Gerçek ilerleme oranı: overallScore geçen takvim günü başına
+  // overallScore = toplam_puan / totalDays
+  // Her geçen takvim günü ortalama op/e kadar overallScore arttı
+  const ratePerDay = op / e  // günlük overallScore artışı
+  if (!ratePerDay) return { text:'Henüz tamamlanan gün yok', color:'var(--text2)' }
+
+  // Kalan ilerleme kaç günde tamamlanır?
+  const need = Math.ceil((1 - op) / ratePerDay)
+  const diff = need - left
+
+  // Beklenen tamamlanma: eğer her gün mükemmel yapılırsa
+  // bir günde overallScore = 1/totalDays artar
+  // Kalan ilerleme = 1-op, bunu 1/totalDays ile böl = kalan gün sayısı
+  const perfectNeed = Math.ceil((1 - op) * totalDays)
+  const behindPerfect = perfectNeed - left // mükemmele kıyasla kaç gün açık
+
+  if (diff <= 0) {
+    if (behindPerfect <= 0) return { text:'Harika! Mükemmel tempoda gidiyorsun 🎯', color:'var(--good)' }
+    return { text:`Mevcut tempoda hedefe yetişirsin ✓`, color:'var(--good)' }
+  }
+  if (diff <= 2) return { text:`Biraz daha dikkat — ${diff} günlük açık var`, color:'var(--mid)' }
+  return { text:`Tempo artırılmalı — ${diff} günlük açık var`, color:'var(--bad)' }
 }
 
 /* ─── Shared styles ──────────────────────────────────────────────────────────────────────────────────── */
