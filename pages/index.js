@@ -1763,16 +1763,32 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
                             onTransferTask(t.id, tomorrow)
                           } : null}
                           onTransferToBuffer={onTransferTask && bufferDow!=null ? ()=>{
-                            // Bu haftanın telafi gününü bul
-                            const wStart = new Date(addDays(goal.start_date,(activeWeek-1)*7)+'T00:00:00')
-                            const bufDow = bufferDow
-                            // Haftanın başından itibaren telafi gününü bul
+                            // Bu haftanın (activeWeek) telafi gününün tam tarihini bul
+                            // Haftanın başlangıç ve bitiş aralığında bufferDow'u ara
+                            const weekStartDate = addDays(goal.start_date, (activeWeek-1)*7)
+                            const weekEndDate   = addDays(goal.start_date, activeWeek*7)
                             let bufDate = null
-                            for(let i=0;i<7;i++){
-                              const d = new Date(wStart); d.setDate(d.getDate()+i)
-                              if(d.getDay()===bufDow){ bufDate=d.toISOString().slice(0,10); break }
+                            // weekStartDate'den weekEndDate'e kadar gün gün tara
+                            let cur = weekStartDate
+                            for(let i=0; i<7; i++){
+                              const ds = addDays(weekStartDate, i)
+                              if(ds >= weekEndDate) break
+                              if(new Date(ds+'T00:00:00').getDay() === bufferDow){
+                                bufDate = ds
+                                break
+                              }
                             }
                             if(bufDate) onTransferTask(t.id, bufDate)
+                            else {
+                              // Haftada bu dow yoksa bir sonraki haftadan bul
+                              for(let i=0; i<14; i++){
+                                const ds = addDays(weekStartDate, i)
+                                if(new Date(ds+'T00:00:00').getDay() === bufferDow){
+                                  bufDate = ds; break
+                                }
+                              }
+                              if(bufDate) onTransferTask(t.id, bufDate)
+                            }
                           } : null}
                         />
                       )}
