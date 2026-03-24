@@ -14,14 +14,16 @@ const DAYS   = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
 const MONTHS = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara']
 
 const BADGES = [
-  { id:'first_day',   icon:'🌱', label:'İlk Adım'     },
-  { id:'streak3',     icon:'🔥', label:'3 Günlük Seri' },
-  { id:'streak7',     icon:'⚡', label:'Haftalık Seri' },
-  { id:'streak14',    icon:'💎', label:'2 Haftalık'    },
-  { id:'perfect_day', icon:'⭐', label:'Mükemmel Gün'  },
-  { id:'half_done',   icon:'🎯', label:'Yarı Yolda'    },
-  { id:'quality_pro', icon:'🏆', label:'Kalite Pro'    },
-  { id:'completed',   icon:'🎉', label:'Tamamlandı!'   },
+  { id:'first_day',   icon:'🌱', label:'İlk Adım'       },
+  { id:'streak3',     icon:'🔥', label:'3 Günlük Seri'  },
+  { id:'streak7',     icon:'⚡', label:'Haftalık Seri'  },
+  { id:'streak14',    icon:'💎', label:'2 Haftalık'     },
+  { id:'perfect_day', icon:'⭐', label:'Mükemmel Gün'   },
+  { id:'half_done',   icon:'🎯', label:'Yarı Yolda'     },
+  { id:'quality_pro', icon:'🏆', label:'Kalite Pro'     },
+  { id:'completed',   icon:'🎉', label:'Tamamlandı!'    },
+  { id:'phoenix',     icon:'🦅', label:'Phoenix'        },
+  { id:'sustainable', icon:'🌊', label:'Sürdürülebilir' },
 ]
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
@@ -65,7 +67,16 @@ function dayScore(tasks, logs, ds) {
   const active = activeTasks(tasks, ds)
   if (!active.length) return -1
   const dl = logs.filter(l => l.log_date === ds)
-  return active.reduce((s,t) => s + (dl.find(l=>l.task_id===t.id) ? Q[dl.find(l=>l.task_id===t.id).quality] : 0), 0) / active.length
+  // Görev zorluk çarpanı: difficulty 1-3 (varsayılan 1)
+  let weightedSum = 0, totalWeight = 0
+  active.forEach(t => {
+    const w   = t.difficulty || 1
+    const log = dl.find(l => l.task_id === t.id)
+    const q   = log ? Q[log.quality] : 0
+    weightedSum  += q * w
+    totalWeight  += w
+  })
+  return totalWeight ? weightedSum / totalWeight : 0
 }
 
 function overallScore(tasks, logs, startDate, totalDays) {
@@ -125,6 +136,24 @@ function getEarnedBadges(tasks, logs, startDate, totalDays) {
     const qs = Math.round(logs.reduce((s,l)=>s+(l.quality==='good'?100:l.quality==='mid'?60:30),0)/logs.length)
     if (qs>=80) earned.add('quality_pro')
   }
+  // Phoenix rozeti: 3 kötü günden sonra 3 mükemmel gün
+  if (e >= 6) {
+    for (let i=3; i<=e-3; i++) {
+      const bad3  = [0,1,2].every(j => { const sc=dayScore(tasks,logs,addDays(startDate,i-3+j)); return sc>=0 && sc<0.5 })
+      const good3 = [0,1,2].every(j => { const sc=dayScore(tasks,logs,addDays(startDate,i+j));   return sc>=0.8 })
+      if (bad3 && good3) { earned.add('phoenix'); break }
+    }
+  }
+  // Sürdürülebilirlik: 30+ gün, ortalama 0.7+
+  if (e >= 30) {
+    const last30scores = []
+    for (let i=Math.max(0,e-30);i<e;i++) {
+      const sc = dayScore(tasks,logs,addDays(startDate,i))
+      if (sc>=0) last30scores.push(sc)
+    }
+    if (last30scores.length>=20 && last30scores.reduce((s,x)=>s+x,0)/last30scores.length>=0.7)
+      earned.add('sustainable')
+  }
   return earned
 }
 
@@ -135,27 +164,41 @@ function getETA(tasks, logs, startDate, totalDays) {
   const left = daysLeft(startDate, totalDays)
   if (!e) return { text:'Bugün başladın, devam et!', color:'var(--text2)' }
 
-  // Gerçek ilerleme oranı: overallScore geçen takvim günü başına
-  // overallScore = toplam_puan / totalDays
-  // Her geçen takvim günü ortalama op/e kadar overallScore arttı
-  const ratePerDay = op / e  // günlük overallScore artışı
-  if (!ratePerDay) return { text:'Henüz tamamlanan gün yok', color:'var(--text2)' }
+  // Tüm aktif günlerin skorlarını topla
+  const allScores = []
+  for (let i=0;i<e;i++) {
+    const ds = addDays(startDate,i)
+    const sc = dayScore(tasks, logs, ds)
+    if (sc >= 0) allScores.push(sc)
+  }
+  if (!allScores.length) return { text:'Henüz tamamlanan gün yok', color:'var(--text2)' }
 
-  // Kalan ilerleme kaç günde tamamlanır?
+  // Genel ortalama (tüm geçmiş)
+  const globalAvg = allScores.reduce((s,x)=>s+x,0) / allScores.length
+
+  // Son 7 günün ortalaması
+  const last7 = allScores.slice(-7)
+  const last7Avg = last7.reduce((s,x)=>s+x,0) / last7.length
+
+  // WMA: son 7 güne %70, genel geçmişe %30 ağırlık
+  // Böylece toparlanma ödüllendiriliyor, eski kötü günler cezalandırılmıyor
+  const effectiveRate = (globalAvg * 0.3) + (last7Avg * 0.7)
+
+  // Günlük overallScore artışı = effectiveRate / totalDays
+  const ratePerDay = effectiveRate / totalDays
+  if (!ratePerDay) return { text:'Henüz veri yok', color:'var(--text2)' }
+
   const need = Math.ceil((1 - op) / ratePerDay)
   const diff = need - left
 
-  // Beklenen tamamlanma: eğer her gün mükemmel yapılırsa
-  // bir günde overallScore = 1/totalDays artar
-  // Kalan ilerleme = 1-op, bunu 1/totalDays ile böl = kalan gün sayısı
-  const perfectNeed = Math.ceil((1 - op) * totalDays)
-  const behindPerfect = perfectNeed - left // mükemmele kıyasla kaç gün açık
+  // Trend göstergesi: son 7 gün genel ortalamadan iyi mi?
+  const trendUp = last7Avg > globalAvg + 0.05
 
   if (diff <= 0) {
-    if (behindPerfect <= 0) return { text:'Harika! Mükemmel tempoda gidiyorsun 🎯', color:'var(--good)' }
-    return { text:`Mevcut tempoda hedefe yetişirsin ✓`, color:'var(--good)' }
+    if (trendUp) return { text:'Harika gidiyorsun, tempo yükseliyor 🚀', color:'var(--good)' }
+    return { text:'Mevcut tempoda hedefe yetişirsin ✓', color:'var(--good)' }
   }
-  if (diff <= 2) return { text:`Biraz daha dikkat — ${diff} günlük açık var`, color:'var(--mid)' }
+  if (diff <= 2) return { text:`Biraz daha gayret — ${diff} günlük açık var`, color:'var(--mid)' }
   return { text:`Tempo artırılmalı — ${diff} günlük açık var`, color:'var(--bad)' }
 }
 
@@ -295,14 +338,14 @@ export default function Home() {
       // Mevcut task'ları güncelle (log geçmişi bozulmaz)
       for (const [i, t] of taskList.entries()) {
         if (t.id) {
-          await supabase.from('tasks').update({ name:t.name, order_index:i, active_days:t.active_days }).eq('id', t.id)
+          await supabase.from('tasks').update({ name:t.name, order_index:i, active_days:t.active_days, difficulty:t.difficulty||1 }).eq('id', t.id)
         } else {
-          await supabase.from('tasks').insert({ goal_id:editGoal.id, name:t.name, order_index:i, active_days:t.active_days })
+          await supabase.from('tasks').insert({ goal_id:editGoal.id, name:t.name, order_index:i, active_days:t.active_days, difficulty:t.difficulty||1 })
         }
       }
     } else {
       const { data:g } = await supabase.from('goals').insert({ name, total_days:totalDays, start_date:todayStr(), user_id:user.id }).select().single()
-      if (g) await supabase.from('tasks').insert(taskList.map((t,i)=>({ goal_id:g.id, name:t.name, order_index:i, active_days:t.active_days })))
+      if (g) await supabase.from('tasks').insert(taskList.map((t,i)=>({ goal_id:g.id, name:t.name, order_index:i, active_days:t.active_days, difficulty:t.difficulty||1 })))
     }
     setShowModal(false); setEditGoal(null); await loadAll()
   }
@@ -1241,39 +1284,47 @@ function AnalyticsPanel({ goals, tasks, logs }) {
       : true
 
     // ── GELİŞMİŞ RISK SKORU (0=güvenli, 100=çok riskli) ──
-    // 1. Veri güveni: az gün geçmişse belirsizlik yüksek
-    const dataConfidence = Math.min(1, e / 7) // 7 gün sonra tam güven
+    // 1. Veri güveni
+    const dataConfidence = Math.min(1, e / 7)
 
-    // 2. İlerleme riski: kalan süreye göre ne kadar geride?
-    const expectedProgress = e / goal.total_days * 100
-    const progressGap = Math.max(0, expectedProgress - op)       // % geride
-    const progressRisk = Math.min(100, progressGap * 2)          // 50 puan geride = max risk
+    // 2. İlerleme riski — kritik eşiğe yaklaştıkça ağırlık artar
+    const timeRatio = e / goal.total_days
+    const expectedProgress = timeRatio * 100
+    const progressGap = Math.max(0, expectedProgress - op)
+    // Son %30'da baskı 3x, ortada 2x, başta 1x
+    const pressureMultiplier = timeRatio > 0.7 ? 3 : timeRatio > 0.4 ? 2 : 1
+    const progressRisk = Math.min(100, progressGap * pressureMultiplier)
 
     // 3. Tutarlılık riski
     const consistencyRisk = Math.max(0, 100 - consistency)
 
-    // 4. Momentum riski: son 3 gün düşüyor mu?
+    // 4. Momentum riski: son trend
     const momentumRisk = recentTrend !== null
-      ? Math.min(100, Math.max(0, -recentTrend * 2))             // düşüş → risk artar
-      : 30                                                         // veri yok → orta risk
+      ? Math.min(100, Math.max(0, -recentTrend * 2))
+      : 30
 
-    // 5. Süre baskısı: son %30'luk dilimde mi?
-    const timePressure = e / goal.total_days > 0.7
+    // 5. Süre baskısı
+    const timePressure = timeRatio > 0.7
       ? Math.min(100, progressGap * 3)
       : 0
 
-    // 6. Seri kırılma riski: bugün aktif görev var ama henüz sıfır
+    // 6. Seri kırılma riski
     const streakRisk = (streak >= 3 && todaySc === 0 && activeTasks(gt,today).length > 0) ? 40 : 0
 
-    // Ağırlıklı toplam (veri güvenine göre scale)
+    // 7. YENİ: Yorgunluk/tükenmişlik faktörü
+    // 14+ gün üst üste 0.9+ skor → "Dinlenme İhtiyacı" sinyali
+    const last14 = daySc.slice(-14)
+    const burnoutRisk = (last14.length >= 14 && last14.every(x => x.sc >= 0.9)) ? 20 : 0
+
+    // Ağırlıklı toplam
     const rawRisk = (
-      progressRisk   * 0.30 +
-      consistencyRisk* 0.25 +
-      momentumRisk   * 0.20 +
-      timePressure   * 0.15 +
-      streakRisk     * 0.10
+      progressRisk    * 0.30 +
+      consistencyRisk * 0.22 +
+      momentumRisk    * 0.20 +
+      timePressure    * 0.15 +
+      streakRisk      * 0.08 +
+      burnoutRisk     * 0.05
     )
-    // Veri az → riski ortaya çek (belirsiz)
     const riskScore = Math.round(rawRisk * dataConfidence + 50 * (1 - dataConfidence))
 
     // Sağlık = risk'in tersi (gösterge tutarlılığı için)
@@ -1287,6 +1338,8 @@ function AnalyticsPanel({ goals, tasks, logs }) {
       warnings.push({ type:'danger', text:`🔥 ${streak} günlük serin tehlikede — bugün henüz görev işaretlemedin` })
     if (riskScore>70 && remaining>0)
       warnings.push({ type:'danger', text:`⚠️ Yüksek risk — mevcut tempoda hedefe ulaşmak zorlaşıyor` })
+    if (burnoutRisk > 0)
+      warnings.push({ type:'info', text:`😮‍💨 14 gün boyunca zirvede gidiyorsun — ara sıra dinlenmeyi de planla` })
     if (momentum!==null && momentum<=-20)
       warnings.push({ type:'warn', text:`📉 Son 7 günde performans ${Math.abs(momentum)} puan düştü` })
     if (recentTrend!==null && recentTrend<=-20)
@@ -1974,7 +2027,7 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
   const [days,     setDays]     = useState(goal?.total_days||'')
   // taskList: [{name, active_days, _key}]
   const initTasks = tasks.length
-    ? tasks.map((t,i) => ({ id:t.id, name:t.name, active_days:t.active_days||[], _key:i }))
+    ? tasks.map((t,i) => ({ id:t.id, name:t.name, active_days:t.active_days||[], difficulty:t.difficulty||1, _key:i }))
     : [{ name:'', active_days:[], _key:0 }]
   const [taskList, setTaskList] = useState(initTasks)
   const [dayPicker, setDayPicker] = useState(null)
@@ -2090,6 +2143,17 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
                     placeholder={`Görev ${i+1}`}
                     style={{ ...css.input, flex:1 }}
                   />
+                  {/* Zorluk seçici */}
+                  <select
+                    value={t.difficulty||1}
+                    onChange={e=>setTaskList(p=>p.map((x,j)=>j===i?{...x,difficulty:Number(e.target.value)}:x))}
+                    title="Görev zorluğu (skora etkiler)"
+                    style={{ background:'var(--surface2)', border:'1.5px solid var(--border)', borderRadius:'var(--r-md)', padding:'0 6px', color:'var(--text3)', fontSize:11, outline:'none', fontFamily:'inherit', cursor:'pointer', flexShrink:0, height:36, fontWeight:600 }}
+                  >
+                    <option value={1}>●</option>
+                    <option value={2}>●●</option>
+                    <option value={3}>●●●</option>
+                  </select>
                   {/* Takvim ikonu */}
                   <button
                     onClick={()=>setDayPicker(dayPicker===i?null:i)}
