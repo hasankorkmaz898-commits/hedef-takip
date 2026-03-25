@@ -81,16 +81,20 @@ function dayScore(tasks, logs, ds) {
 
 function overallScore(tasks, logs, startDate, totalDays) {
   const e = daysElapsed(startDate); if (!e) return 0
-  let sum = 0
+  let sum = 0, activeCnt = 0
   for (let i=0;i<e;i++) {
     const ds = addDays(startDate,i)
     const sc = dayScore(tasks, logs, ds)
-    if (sc >= 0) sum += sc
+    if (sc >= 0) { sum += sc; activeCnt++ }
   }
-  return sum / totalDays
+  // Payda: toplam aktif gün sayısı (geçmiş + tahmin edilen gelecek)
+  // Gelecekte de aynı aktif gün oranı devam edecek
+  const activeRatio = e > 0 ? activeCnt / e : 1
+  const expectedTotal = Math.max(activeCnt, totalDays * activeRatio)
+  return expectedTotal > 0 ? sum / expectedTotal : 0
 }
 
-// Aktif günlerdeki ortalama performans — ETA için doğru metrik
+// Aktif günlerdeki ortalama performans
 function avgDailyRate(tasks, logs, startDate) {
   const e = daysElapsed(startDate); if (!e) return 0
   let sum = 0, cnt = 0
@@ -181,11 +185,13 @@ function getETA(tasks, logs, startDate, totalDays) {
   const last7Avg = last7.reduce((s,x)=>s+x,0) / last7.length
 
   // WMA: son 7 güne %70, genel geçmişe %30 ağırlık
-  // Böylece toparlanma ödüllendiriliyor, eski kötü günler cezalandırılmıyor
   const effectiveRate = (globalAvg * 0.3) + (last7Avg * 0.7)
 
-  // Günlük overallScore artışı = effectiveRate / totalDays
-  const ratePerDay = effectiveRate / totalDays
+  // Takvim günü başına beklenen ilerleme
+  // = (aktif gün oranı × ortalama skor) / toplam beklenen aktif gün
+  const activeRatio = e > 0 ? allScores.length / e : 1
+  const expectedTotal = Math.max(allScores.length, totalDays * activeRatio)
+  const ratePerDay = expectedTotal > 0 ? (activeRatio * effectiveRate) / expectedTotal : 0
   if (!ratePerDay) return { text:'Henüz veri yok', color:'var(--text2)' }
 
   const need = Math.ceil((1 - op) / ratePerDay)
@@ -194,11 +200,11 @@ function getETA(tasks, logs, startDate, totalDays) {
   // Trend göstergesi: son 7 gün genel ortalamadan iyi mi?
   const trendUp = last7Avg > globalAvg + 0.05
 
-  if (diff <= 0) {
+  if (diff <= 1) {  // 1 günlük tolerans: aktif olmayan günlerden kaynaklı rounding
     if (trendUp) return { text:'Harika gidiyorsun, tempo yükseliyor 🚀', color:'var(--good)' }
     return { text:'Mevcut tempoda hedefe yetişirsin ✓', color:'var(--good)' }
   }
-  if (diff <= 2) return { text:`Biraz daha gayret — ${diff} günlük açık var`, color:'var(--mid)' }
+  if (diff <= 3) return { text:`Biraz daha gayret — ${diff} günlük açık var`, color:'var(--mid)' }
   return { text:`Tempo artırılmalı — ${diff} günlük açık var`, color:'var(--bad)' }
 }
 
@@ -1273,20 +1279,23 @@ function AnalyticsPanel({ goals, tasks, logs }) {
     const streak = getStreak(gt,gl,goal.start_date)
     const todaySc = dayScore(gt,gl,today)
 
-    // ── Kurtarılabilirlik: getETA ile aynı WMA mantığını kullan ──
-    // Tüm aktif günlerin skorları zaten daySc'de var
-    const allScores = daySc.map(x=>x.sc)
-    const globalAvg = allScores.length ? allScores.reduce((s,x)=>s+x,0)/allScores.length : 0
-    const last7sc   = allScores.slice(-7)
-    const last7AvgR = last7sc.length ? last7sc.reduce((s,x)=>s+x,0)/last7sc.length : globalAvg
+    // ── Kurtarılabilirlik: aktif gün oranını dikkate alarak WMA ──
+    const allScores  = daySc.map(x=>x.sc)
+    const globalAvg  = allScores.length ? allScores.reduce((s,x)=>s+x,0)/allScores.length : 0
+    const last7sc    = allScores.slice(-7)
+    const last7AvgR  = last7sc.length ? last7sc.reduce((s,x)=>s+x,0)/last7sc.length : globalAvg
+    // WMA: son 7 güne %70, genel geçmişe %30
     const effectiveRateR = (globalAvg * 0.3) + (last7AvgR * 0.7)
-    const ratePerDayR    = effectiveRateR / goal.total_days
-    const opFrac         = op / 100  // op zaten % cinsinden
+    // Aktif gün oranı: geçen e günde kaçında aktif görev vardı?
+    const activeRatioR   = e > 0 ? daySc.length / e : 1
+    // Takvim günü başına beklenen overallScore artışı
+    const expectedTotalR = Math.max(daySc.length, goal.total_days * activeRatioR)
+    const ratePerDayR    = expectedTotalR > 0 ? (activeRatioR * effectiveRateR) / expectedTotalR : 0
+    const opFrac         = op / 100
     const needR          = ratePerDayR > 0 ? Math.ceil((1 - opFrac) / ratePerDayR) : 9999
     const diffR          = needR - remaining
-    // getETA ile birebir aynı karar: diff<=0 → yetişir
-    const recoverable    = diffR <= 0
-    const neededPerDay   = null  // artık kullanılmıyor ama return'da var
+    const recoverable    = diffR <= 1  // 1 günlük tolerans
+    const neededPerDay   = null
     const currentPerDay  = effectiveRateR
 
     // ── GELİŞMİŞ RISK SKORU (0=güvenli, 100=çok riskli) ──
