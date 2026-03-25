@@ -2144,16 +2144,29 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
                     style={{ ...css.input, flex:1 }}
                   />
                   {/* Zorluk seçici */}
-                  <select
-                    value={t.difficulty||1}
-                    onChange={e=>setTaskList(p=>p.map((x,j)=>j===i?{...x,difficulty:Number(e.target.value)}:x))}
-                    title="Görev zorluğu (skora etkiler)"
-                    style={{ background:'var(--surface2)', border:'1.5px solid var(--border)', borderRadius:'var(--r-md)', padding:'0 6px', color:'var(--text3)', fontSize:11, outline:'none', fontFamily:'inherit', cursor:'pointer', flexShrink:0, height:36, fontWeight:600 }}
-                  >
-                    <option value={1}>●</option>
-                    <option value={2}>●●</option>
-                    <option value={3}>●●●</option>
-                  </select>
+                  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3, flexShrink:0 }}>
+                    <span style={{ fontSize:9, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'.06em', lineHeight:1 }}>Zorluk</span>
+                    <div style={{ display:'flex', gap:3 }}>
+                      {[{v:1,label:'Kolay',color:'var(--good)'},{v:2,label:'Orta',color:'var(--mid)'},{v:3,label:'Zor',color:'var(--bad)'}].map(({v,label,color})=>{
+                        const active = (t.difficulty||1)===v
+                        return (
+                          <button
+                            key={v}
+                            type="button"
+                            onClick={()=>setTaskList(p=>p.map((x,j)=>j===i?{...x,difficulty:v}:x))}
+                            title={label}
+                            style={{
+                              padding:'3px 7px', borderRadius:8, cursor:'pointer', fontFamily:'inherit',
+                              fontSize:10, fontWeight:700, lineHeight:1,
+                              background: active ? color.replace('var(--good)','rgba(74,222,128,0.15)').replace('var(--mid)','rgba(251,191,36,0.15)').replace('var(--bad)','rgba(248,113,113,0.15)') : 'var(--surface2)',
+                              border: `1.5px solid ${active ? color.replace('var(--good)','rgba(74,222,128,0.5)').replace('var(--mid)','rgba(251,191,36,0.5)').replace('var(--bad)','rgba(248,113,113,0.5)') : 'var(--border)'}`,
+                              color: active ? color : 'var(--text3)',
+                            }}
+                          >{label}</button>
+                        )
+                      })}
+                    </div>
+                  </div>
                   {/* Takvim ikonu */}
                   <button
                     onClick={()=>setDayPicker(dayPicker===i?null:i)}
