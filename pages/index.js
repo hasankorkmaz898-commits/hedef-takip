@@ -1273,15 +1273,21 @@ function AnalyticsPanel({ goals, tasks, logs }) {
     const streak = getStreak(gt,gl,goal.start_date)
     const todaySc = dayScore(gt,gl,today)
 
-    // ── Kurtarılabilirlik: bu tempoda hedefe ulaşılabilir mi? ──
-    // Gerekli günlük oran = kalan hedef / kalan gün
-    const neededPerDay = remaining > 0
-      ? Math.max(0, (goal.total_days - (op/100*goal.total_days)) / remaining)
-      : null
-    const currentPerDay = l7avg ?? (daySc.length ? daySc.reduce((s,x)=>s+x.sc,0)/daySc.length : 0)
-    const recoverable = neededPerDay !== null
-      ? neededPerDay <= 1.0 && currentPerDay >= neededPerDay * 0.7
-      : true
+    // ── Kurtarılabilirlik: getETA ile aynı WMA mantığını kullan ──
+    // Tüm aktif günlerin skorları zaten daySc'de var
+    const allScores = daySc.map(x=>x.sc)
+    const globalAvg = allScores.length ? allScores.reduce((s,x)=>s+x,0)/allScores.length : 0
+    const last7sc   = allScores.slice(-7)
+    const last7AvgR = last7sc.length ? last7sc.reduce((s,x)=>s+x,0)/last7sc.length : globalAvg
+    const effectiveRateR = (globalAvg * 0.3) + (last7AvgR * 0.7)
+    const ratePerDayR    = effectiveRateR / goal.total_days
+    const opFrac         = op / 100  // op zaten % cinsinden
+    const needR          = ratePerDayR > 0 ? Math.ceil((1 - opFrac) / ratePerDayR) : 9999
+    const diffR          = needR - remaining
+    // getETA ile birebir aynı karar: diff<=0 → yetişir
+    const recoverable    = diffR <= 0
+    const neededPerDay   = null  // artık kullanılmıyor ama return'da var
+    const currentPerDay  = effectiveRateR
 
     // ── GELİŞMİŞ RISK SKORU (0=güvenli, 100=çok riskli) ──
     // 1. Veri güveni
@@ -1357,7 +1363,7 @@ function AnalyticsPanel({ goals, tasks, logs }) {
     if (recentTrend!==null && recentTrend>=20)
       warnings.push({ type:'good', text:`🚀 Son 3 günde sürekli yükseliş!` })
 
-    return { goal, op, riskScore, healthScore, healthLabel, healthColor, momentum, recentTrend, consistency, dowAvg, bestDow, worstDow, taskStats, fhAvg, shAvg, warnings, daySc, e, remaining, recoverable, neededPerDay, currentPerDay }
+    return { goal, op, riskScore, healthScore, healthLabel, healthColor, momentum, recentTrend, consistency, dowAvg, bestDow, worstDow, taskStats, fhAvg, shAvg, warnings, daySc, e, remaining, recoverable, neededPerDay, currentPerDay, diffR }
   })
 
   const totalActive = goals.length
@@ -1397,7 +1403,7 @@ function AnalyticsPanel({ goals, tasks, logs }) {
       )}
 
       {/* Her hedef için accordion analiz kartları */}
-      {goalAnalytics.map(({ goal, op, riskScore, momentum, recentTrend, consistency, dowAvg, bestDow, worstDow, taskStats, fhAvg, shAvg, daySc, e, remaining, recoverable }) => {
+      {goalAnalytics.map(({ goal, op, riskScore, momentum, recentTrend, consistency, dowAvg, bestDow, worstDow, taskStats, fhAvg, shAvg, daySc, e, remaining, recoverable, diffR }) => {
         const isOpen = expandedId === goal.id
         const atab   = analyticTab[goal.id] || 'overview'
         const riskColor = riskScore<=20?'var(--good)':riskScore<=40?'var(--accent)':riskScore<=60?'var(--mid)':riskScore<=80?'var(--fire)':'var(--bad)'
@@ -1468,8 +1474,12 @@ function AnalyticsPanel({ goals, tasks, logs }) {
                         </div>
                       )}
                       {remaining>0 && (
-                        <div style={{ background:recoverable?'rgba(74,222,128,0.08)':'rgba(248,113,113,0.08)', border:`1px solid ${recoverable?'rgba(74,222,128,0.2)':'rgba(248,113,113,0.2)'}`, borderRadius:10, padding:'7px 11px', fontSize:11, color:recoverable?'var(--good)':'var(--bad)', fontWeight:600 }}>
-                          {recoverable?`✓ ${remaining} günde hedefe ulaşmak mümkün`:`✗ Mevcut tempoda ${remaining} günde yetişmek zor`}
+                        <div style={{ background:recoverable?'rgba(74,222,128,0.08)':diffR<=2?'rgba(251,191,36,0.08)':'rgba(248,113,113,0.08)', border:`1px solid ${recoverable?'rgba(74,222,128,0.2)':diffR<=2?'rgba(251,191,36,0.3)':'rgba(248,113,113,0.2)'}`, borderRadius:10, padding:'7px 11px', fontSize:11, color:recoverable?'var(--good)':diffR<=2?'var(--mid)':'var(--bad)', fontWeight:600 }}>
+                          {recoverable
+                            ? `✓ Mevcut tempoda hedefe yetişirsin`
+                            : diffR<=2
+                              ? `⚡ Biraz daha gayret — ${diffR} günlük açık var`
+                              : `✗ Tempo artırılmalı — ${diffR} günlük açık var`}
                         </div>
                       )}
                     </div>
