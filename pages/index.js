@@ -107,14 +107,22 @@ function avgDailyRate(tasks, logs, startDate) {
 }
 
 function getStreak(tasks, logs, startDate) {
+  // logs henüz yüklenmemişse (boş array) seri 0 döndürme
+  // En az 1 log varsa veya tasks varsa hesapla
+  if (!tasks.length) return 0
   let s = 0
+  const todayDs = todayStr()
   for (let i=0;i<365;i++) {
     const d = new Date(); d.setDate(d.getDate()-i)
     const ds = toDate(d)
     if (ds < startDate) break
     const sc = dayScore(tasks, logs, ds)
-    if (sc < 0) continue
-    if (i===0 && sc===0 && !logs.some(l=>l.log_date===ds)) continue
+    if (sc < 0) continue  // bu günde aktif görev yok, atla (seriyi kırma)
+    // Bugün henüz tamamlanmamışsa atla (seriyi kırma) — ama logs boş değilse kontrol et
+    if (ds === todayDs && sc === 0) {
+      // Bugün hiç log yoksa: henüz işaretlenmemiş olabilir, bugünü atla
+      if (!logs.some(l => l.log_date === todayDs)) continue
+    }
     if (sc >= 0.5) s++; else break
   }
   return s
@@ -298,7 +306,6 @@ export default function Home() {
   async function loadAll() {
     const { data: gd } = await supabase.from('goals').select('*').order('created_at')
     if (!gd) return
-    setGoals(gd)
     const tm={}, lm={}, nm={}
     for (const g of gd) {
       const { data:t } = await supabase.from('tasks').select('*').eq('goal_id',g.id).order('order_index')
@@ -308,7 +315,12 @@ export default function Home() {
       const { data:n } = await supabase.from('daily_notes').select('*').eq('goal_id',g.id)
       ;(n||[]).forEach(x => { nm[`${g.id}:${x.note_date}`] = x.note })
     }
-    setTasks(tm); setLogs(lm); setNotes(nm)
+    // Hepsini aynı anda set et — aralarında boş state olmasın
+    // React 18'de bu tek bir render tetikler (automatic batching)
+    setGoals(gd)
+    setTasks(tm)
+    setLogs(lm)
+    setNotes(nm)
   }
 
   function showToast(msg) { setToast(msg); setTimeout(()=>setToast(''),3000) }
@@ -398,15 +410,29 @@ export default function Home() {
   async function toggleTask(goalId, taskId) {
     const ds = todayStr()
     const ex = (logs[goalId]||[]).find(l=>l.task_id===taskId&&l.log_date===ds)
-    if (ex) await supabase.from('daily_logs').delete().eq('id',ex.id)
-    else    await supabase.from('daily_logs').insert({ task_id:taskId, log_date:ds, quality:'good', user_id:user.id })
+    // Optimistic update — UI anında güncellenir
+    if (ex) {
+      setLogs(p=>({...p,[goalId]:(p[goalId]||[]).filter(l=>l.id!==ex.id)}))
+      await supabase.from('daily_logs').delete().eq('id',ex.id)
+    } else {
+      const tmpLog = { id:'tmp_'+taskId, task_id:taskId, log_date:ds, quality:'good', user_id:user.id }
+      setLogs(p=>({...p,[goalId]:[...(p[goalId]||[]),tmpLog]}))
+      await supabase.from('daily_logs').insert({ task_id:taskId, log_date:ds, quality:'good', user_id:user.id })
+    }
     await reloadLogs(goalId)
   }
 
   async function setQuality(goalId, taskId, quality, ds=todayStr()) {
     const ex = (logs[goalId]||[]).find(l=>l.task_id===taskId&&l.log_date===ds)
-    if (ex) await supabase.from('daily_logs').update({ quality }).eq('id',ex.id)
-    else    await supabase.from('daily_logs').insert({ task_id:taskId, log_date:ds, quality, user_id:user.id })
+    // Optimistic update
+    if (ex) {
+      setLogs(p=>({...p,[goalId]:(p[goalId]||[]).map(l=>l.id===ex.id?{...l,quality}:l)}))
+      await supabase.from('daily_logs').update({ quality }).eq('id',ex.id)
+    } else {
+      const tmpLog = { id:'tmp_q_'+taskId, task_id:taskId, log_date:ds, quality, user_id:user.id }
+      setLogs(p=>({...p,[goalId]:[...(p[goalId]||[]),tmpLog]}))
+      await supabase.from('daily_logs').insert({ task_id:taskId, log_date:ds, quality, user_id:user.id })
+    }
     await reloadLogs(goalId)
   }
 
