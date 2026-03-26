@@ -37,8 +37,10 @@ function taskActiveOnDay(task, ds) {
   // extra_dates: bu tarihte özel olarak aktif (ertesi güne/telafi gününe aktarıldı)
   if (task.extra_dates?.map(String).includes(String(ds))) return true
   // Görev oluşturulmadan önceki günlerde aktif değil
+  // created_at UTC olabilir — yerel tarihe çevir (timezone güvenli)
   if (task.created_at) {
-    const taskDate = task.created_at.slice(0,10)
+    const createdLocal = new Date(task.created_at)
+    const taskDate = `${createdLocal.getFullYear()}-${String(createdLocal.getMonth()+1).padStart(2,'0')}-${String(createdLocal.getDate()).padStart(2,'0')}`
     if (ds < taskDate) return false
   }
   // Sonlandırılmış görev — ended_at tarihinden sonra aktif değil
@@ -66,7 +68,9 @@ function taskStatus(task, ds) {
 function dayScore(tasks, logs, ds) {
   const active = activeTasks(tasks, ds)
   if (!active.length) return -1
-  const dl = logs.filter(l => l.log_date === ds)
+  // log_date'i normalize et — bazı clientlarda farklı format gelebilir
+  const dsStr = String(ds).slice(0,10)
+  const dl = logs.filter(l => String(l.log_date).slice(0,10) === dsStr)
   // Görev zorluk çarpanı: difficulty 1-3 (varsayılan 1)
   let weightedSum = 0, totalWeight = 0
   active.forEach(t => {
@@ -107,8 +111,6 @@ function avgDailyRate(tasks, logs, startDate) {
 }
 
 function getStreak(tasks, logs, startDate) {
-  // logs henüz yüklenmemişse (boş array) seri 0 döndürme
-  // En az 1 log varsa veya tasks varsa hesapla
   if (!tasks.length) return 0
   let s = 0
   const todayDs = todayStr()
@@ -117,12 +119,13 @@ function getStreak(tasks, logs, startDate) {
     const ds = toDate(d)
     if (ds < startDate) break
     const sc = dayScore(tasks, logs, ds)
-    if (sc < 0) continue  // bu günde aktif görev yok, atla (seriyi kırma)
-    // Bugün henüz tamamlanmamışsa atla (seriyi kırma) — ama logs boş değilse kontrol et
-    if (ds === todayDs && sc === 0) {
-      // Bugün hiç log yoksa: henüz işaretlenmemiş olabilir, bugünü atla
-      if (!logs.some(l => l.log_date === todayDs)) continue
-    }
+    // Aktif görev yoksa bu günü say ama seriyi kırma
+    if (sc < 0) continue
+    // Bugün: henüz işaretlenmemişse (sc=0, log yok) atla — seriyi kırma
+    if (ds === todayDs && sc < 0.5 && !logs.some(l => String(l.log_date).slice(0,10) === todayDs)) continue
+    // Dün veya önceki günler: sc=0 ama log varsa (quality seçilmedi)
+    // quality seçilmemişse 'good' varsayılan → sc > 0 olmalı
+    // Herhangi bir gün sc < 0.5 → seri biter
     if (sc >= 0.5) s++; else break
   }
   return s
