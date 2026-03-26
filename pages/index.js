@@ -27,7 +27,8 @@ const BADGES = [
 ]
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
-const toDate     = d => d.toISOString().slice(0,10)
+// Yerel saat dilimini (Local Time) koruyarak YYYY-MM-DD formatına çevirir (UTC kayması önlendi)
+const toDate     = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 const todayStr   = ()  => toDate(new Date())
 const addDays    = (ds, n) => { const d = new Date(ds); d.setDate(d.getDate()+n); return toDate(d) }
 const daysElapsed= s   => Math.max(0, Math.floor((new Date()-new Date(s))/86400000))
@@ -37,7 +38,6 @@ function taskActiveOnDay(task, ds) {
   // extra_dates: bu tarihte özel olarak aktif (ertesi güne/telafi gününe aktarıldı)
   if (task.extra_dates?.map(String).includes(String(ds))) return true
   // Görev oluşturulmadan önceki günlerde aktif değil
-  // created_at UTC olabilir — yerel tarihe çevir (timezone güvenli)
   if (task.created_at) {
     const createdLocal = new Date(task.created_at)
     const taskDate = `${createdLocal.getFullYear()}-${String(createdLocal.getMonth()+1).padStart(2,'0')}-${String(createdLocal.getDate()).padStart(2,'0')}`
@@ -68,10 +68,8 @@ function taskStatus(task, ds) {
 function dayScore(tasks, logs, ds) {
   const active = activeTasks(tasks, ds)
   if (!active.length) return -1
-  // log_date'i normalize et — bazı clientlarda farklı format gelebilir
   const dsStr = String(ds).slice(0,10)
   const dl = logs.filter(l => String(l.log_date).slice(0,10) === dsStr)
-  // Görev zorluk çarpanı: difficulty 1-3 (varsayılan 1)
   let weightedSum = 0, totalWeight = 0
   active.forEach(t => {
     const w   = t.difficulty || 1
@@ -91,14 +89,11 @@ function overallScore(tasks, logs, startDate, totalDays) {
     const sc = dayScore(tasks, logs, ds)
     if (sc >= 0) { sum += sc; activeCnt++ }
   }
-  // Payda: toplam aktif gün sayısı (geçmiş + tahmin edilen gelecek)
-  // Gelecekte de aynı aktif gün oranı devam edecek
   const activeRatio = e > 0 ? activeCnt / e : 1
   const expectedTotal = Math.max(activeCnt, totalDays * activeRatio)
   return expectedTotal > 0 ? sum / expectedTotal : 0
 }
 
-// Aktif günlerdeki ortalama performans
 function avgDailyRate(tasks, logs, startDate) {
   const e = daysElapsed(startDate); if (!e) return 0
   let sum = 0, cnt = 0
@@ -110,24 +105,39 @@ function avgDailyRate(tasks, logs, startDate) {
   return cnt ? sum / cnt : 0
 }
 
+// YENİ: Düzeltilmiş Seri Hesaplama Mantığı
 function getStreak(tasks, logs, startDate) {
   if (!tasks.length) return 0
   let s = 0
   const todayDs = todayStr()
-  for (let i=0;i<365;i++) {
-    const d = new Date(); d.setDate(d.getDate()-i)
+  
+  for (let i=0; i<365; i++) {
+    const d = new Date()
+    d.setDate(d.getDate() - i)
     const ds = toDate(d)
+    
+    // Hedefin başlama tarihinden öncesine gitmeye gerek yok
     if (ds < startDate) break
+    
     const sc = dayScore(tasks, logs, ds)
-    // Aktif görev yoksa bu günü say ama seriyi kırma
+    
+    // 1. O gün için hiç aktif görev yoksa günü atla
     if (sc < 0) continue
-    // Bugün: henüz işaretlenmemişse (sc=0, log yok) atla — seriyi kırma
-    if (ds === todayDs && sc < 0.5 && !logs.some(l => String(l.log_date).slice(0,10) === todayDs)) continue
-    // Dün veya önceki günler: sc=0 ama log varsa (quality seçilmedi)
-    // quality seçilmemişse 'good' varsayılan → sc > 0 olmalı
-    // Herhangi bir gün sc < 0.5 → seri biter
-    if (sc >= 0.5) s++; else break
+
+    // 2. Kontrol edilen gün BUGÜN ise:
+    if (ds === todayDs) {
+      if (sc >= 0.5) s++ // Eğer şimdiden %50'yi geçtiysen seriye bugünü de ekle
+      continue // BAŞARISIZ OLSAN BİLE GÜN BİTMEDİĞİ İÇİN SERİYİ KIRMA
+    }
+
+    // 3. Geçmiş günler için:
+    if (sc >= 0.5) {
+      s++ // Başarılıysa seriyi artır
+    } else {
+      break // Geçmiş bir günde %50'nin altındaysan seri biter
+    }
   }
+  
   return s
 }
 
@@ -151,7 +161,6 @@ function getEarnedBadges(tasks, logs, startDate, totalDays) {
     const qs = Math.round(logs.reduce((s,l)=>s+(l.quality==='good'?100:l.quality==='mid'?60:30),0)/logs.length)
     if (qs>=80) earned.add('quality_pro')
   }
-  // Phoenix rozeti: 3 kötü günden sonra 3 mükemmel gün
   if (e >= 6) {
     for (let i=3; i<=e-3; i++) {
       const bad3  = [0,1,2].every(j => { const sc=dayScore(tasks,logs,addDays(startDate,i-3+j)); return sc>=0 && sc<0.5 })
@@ -159,7 +168,6 @@ function getEarnedBadges(tasks, logs, startDate, totalDays) {
       if (bad3 && good3) { earned.add('phoenix'); break }
     }
   }
-  // Sürdürülebilirlik: 30+ gün, ortalama 0.7+
   if (e >= 30) {
     const last30scores = []
     for (let i=Math.max(0,e-30);i<e;i++) {
@@ -179,7 +187,6 @@ function getETA(tasks, logs, startDate, totalDays) {
   const left = daysLeft(startDate, totalDays)
   if (!e) return { text:'Bugün başladın, devam et!', color:'var(--text2)' }
 
-  // Tüm aktif günlerin skorlarını topla
   const allScores = []
   for (let i=0;i<e;i++) {
     const ds = addDays(startDate,i)
@@ -188,18 +195,11 @@ function getETA(tasks, logs, startDate, totalDays) {
   }
   if (!allScores.length) return { text:'Henüz tamamlanan gün yok', color:'var(--text2)' }
 
-  // Genel ortalama (tüm geçmiş)
   const globalAvg = allScores.reduce((s,x)=>s+x,0) / allScores.length
-
-  // Son 7 günün ortalaması
   const last7 = allScores.slice(-7)
   const last7Avg = last7.reduce((s,x)=>s+x,0) / last7.length
-
-  // WMA: son 7 güne %70, genel geçmişe %30 ağırlık
   const effectiveRate = (globalAvg * 0.3) + (last7Avg * 0.7)
 
-  // Takvim günü başına beklenen ilerleme
-  // = (aktif gün oranı × ortalama skor) / toplam beklenen aktif gün
   const activeRatio = e > 0 ? allScores.length / e : 1
   const expectedTotal = Math.max(allScores.length, totalDays * activeRatio)
   const ratePerDay = expectedTotal > 0 ? (activeRatio * effectiveRate) / expectedTotal : 0
@@ -207,11 +207,9 @@ function getETA(tasks, logs, startDate, totalDays) {
 
   const need = Math.ceil((1 - op) / ratePerDay)
   const diff = need - left
-
-  // Trend göstergesi: son 7 gün genel ortalamadan iyi mi?
   const trendUp = last7Avg > globalAvg + 0.05
 
-  if (diff <= 1) {  // 1 günlük tolerans: aktif olmayan günlerden kaynaklı rounding
+  if (diff <= 1) { 
     if (trendUp) return { text:'Harika gidiyorsun, tempo yükseliyor 🚀', color:'var(--good)' }
     return { text:'Mevcut tempoda hedefe yetişirsin ✓', color:'var(--good)' }
   }
@@ -255,7 +253,7 @@ const css = {
 }
 
 /* ─── Main App ───────────────────────────────────────────────────────────── */
-const supabase = createClient() // singleton — component dışında
+const supabase = createClient() 
 
 export default function Home() {
   const [user,       setUser]       = useState(null)
@@ -277,8 +275,8 @@ export default function Home() {
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [expandedGoal,   setExpandedGoal]   = useState(null)
   const [showProPlan,    setShowProPlan]    = useState(false)
-  const [checkinGoal,    setCheckinGoal]    = useState(null)  // {goal, weekNum, weekName, stats}
-  const [milestoneData,  setMilestoneData]  = useState(null)  // {weekNum, weekName, stats}
+  const [checkinGoal,    setCheckinGoal]    = useState(null) 
+  const [milestoneData,  setMilestoneData]  = useState(null) 
 
   /* Auth */
   useEffect(() => {
@@ -318,8 +316,6 @@ export default function Home() {
       const { data:n } = await supabase.from('daily_notes').select('*').eq('goal_id',g.id)
       ;(n||[]).forEach(x => { nm[`${g.id}:${x.note_date}`] = x.note })
     }
-    // Hepsini aynı anda set et — aralarında boş state olmasın
-    // React 18'de bu tek bir render tetikler (automatic batching)
     setGoals(gd)
     setTasks(tm)
     setLogs(lm)
@@ -333,19 +329,13 @@ export default function Home() {
     const current = [...(tasks[goalId]||[])]
     const [moved] = current.splice(fromIdx, 1)
     current.splice(toIdx, 0, moved)
-    // Optimistic update — UI anında güncellenir
     setTasks(p => ({...p, [goalId]: current}))
-    // Supabase'e yaz
     await Promise.all(current.map((t, i) =>
       supabase.from('tasks').update({ order_index: i }).eq('id', t.id)
     ))
   }
 
   async function handleSaveGoal(name, totalDays, taskList) {
-    // taskList: [{id?, name, active_days}]
-    // id varsa mevcut task → güncelle (log geçmişi korunur)
-    // id yoksa yeni task → ekle
-    // editGoal'daki task listesinde olup taskList'te olmayanlar → sil
     if (editGoal) {
       await supabase.from('goals').update({ name, total_days:totalDays }).eq('id',editGoal.id)
 
@@ -353,10 +343,8 @@ export default function Home() {
       const keptIds     = taskList.filter(t=>t.id).map(t=>t.id)
       const removedIds  = existingIds.filter(id=>!keptIds.includes(id))
 
-      // Kaldırılan task'ları sil
       if (removedIds.length) await supabase.from('tasks').delete().in('id', removedIds)
 
-      // Mevcut task'ları güncelle (log geçmişi bozulmaz)
       for (const [i, t] of taskList.entries()) {
         if (t.id) {
           await supabase.from('tasks').update({ name:t.name, order_index:i, active_days:t.active_days, difficulty:t.difficulty||1 }).eq('id', t.id)
@@ -376,7 +364,6 @@ export default function Home() {
     const gtasks = tasks[goalId]||[]
     if (!goal) return
 
-    // Mevcut şablon var mı kontrol et
     const { data:existing } = await supabase
       .from('shared_templates')
       .select('id')
@@ -413,7 +400,6 @@ export default function Home() {
   async function toggleTask(goalId, taskId) {
     const ds = todayStr()
     const ex = (logs[goalId]||[]).find(l=>l.task_id===taskId&&l.log_date===ds)
-    // Optimistic update — UI anında güncellenir
     if (ex) {
       setLogs(p=>({...p,[goalId]:(p[goalId]||[]).filter(l=>l.id!==ex.id)}))
       await supabase.from('daily_logs').delete().eq('id',ex.id)
@@ -427,7 +413,6 @@ export default function Home() {
 
   async function setQuality(goalId, taskId, quality, ds=todayStr()) {
     const ex = (logs[goalId]||[]).find(l=>l.task_id===taskId&&l.log_date===ds)
-    // Optimistic update
     if (ex) {
       setLogs(p=>({...p,[goalId]:(p[goalId]||[]).map(l=>l.id===ex.id?{...l,quality}:l)}))
       await supabase.from('daily_logs').update({ quality }).eq('id',ex.id)
@@ -469,12 +454,9 @@ export default function Home() {
     if (!t) return
     const skipped    = [...new Set([...(t.skipped_dates||[]).map(String), String(today)])]
     const extraDates = [...new Set([...(t.extra_dates||[]).map(String), String(targetDate)])]
-    // Önce UI güncelle (anlık görünüm)
     setTasks(p=>({...p,[goalId]:p[goalId].map(x=>x.id===taskId?{...x,skipped_dates:skipped,extra_dates:extraDates}:x)}))
-    // DB'ye kaydet — await ile bekliyoruz
     const { error } = await supabase.from('tasks').update({ skipped_dates:skipped, extra_dates:extraDates }).eq('id', taskId)
     if (error) {
-      // Hata olursa UI'ı geri al
       setTasks(p=>({...p,[goalId]:p[goalId].map(x=>x.id===taskId?{...x,skipped_dates:t.skipped_dates||[],extra_dates:t.extra_dates||[]}:x)}))
       showToast('❌ Aktarılamadı, tekrar dene')
       return
@@ -696,7 +678,7 @@ export default function Home() {
         />
       )}
 
-      {/* Shared Goals Panel — overlay modu (profil panelinden açılınca) */}
+      {/* Shared Goals Panel — overlay modu */}
       {showShared && (
         <SharedGoalsPanel
           user={user}
@@ -766,7 +748,7 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
   const dragIdx     = useRef(null)
   const dragOverIdx = useRef(null)
   const [dragging,  setDragging]  = useState(false)
-  const [openMenuId, setOpenMenuId] = useState(null) // hangi task menüsü açık
+  const [openMenuId, setOpenMenuId] = useState(null) 
 
   function handleDragStart(i) { dragIdx.current = i; setDragging(true) }
   function handleDragEnter(i) { dragOverIdx.current = i }
@@ -788,10 +770,8 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
   const todayLogs= logs.filter(l=>l.log_date===today)
   const doneTodayCount = todayLogs.length
 
-  // Profesyonel plan: görevlerin week_number'ı varsa haftalı yapı
   const isPro = tasks.some(t=>t.week_number)
   const todayDow = new Date().getDay()
-  // Hangi haftadayız? (hedef başlangıcından geçen gün sayısına göre)
   const currentWeek = isPro ? Math.min(
     Math.max(0, Math.floor(elapsed/7)),
     Math.max(...tasks.map(t=>t.week_number||1)) - 1
@@ -913,13 +893,11 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
 
             {tab==='tasks' && (
               <div className="anim-tab">
-
-                {/* Pro plan: haftalık sekme navigasyonu */}
                 {isPro && (() => {
                   const allWeekNums = [...new Set(tasks.map(t=>t.week_number).filter(Boolean))].sort((a,b)=>a-b)
                   const maxWeeks    = allWeekNums.length
                   const [proWeekTab, setProWeekTab] = [currentWeekNum, ()=>{}]
-                  return null // sadece hafta nav aşağıda render edilecek
+                  return null
                 })()}
 
                 {isPro ? (
@@ -960,7 +938,6 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                     const DOW_LABELS = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
                     const activeDayLabels = t.active_days?.length ? t.active_days.map(d=>DOW_LABELS[d]).join(' · ') : null
 
-                    // Kart arka planı ve border'ı duruma göre
                     const cardBg     = isEnded?'transparent':isSkipped?'rgba(251,191,36,0.04)':q?qBg[q]:'var(--surface2)'
                     const cardBorder = isEnded?'var(--border)':isSkipped?'rgba(251,191,36,0.25)':q?qBorder[q]:'var(--border)'
                     const cardOpacity= isEnded?0.4:isSkipped?0.6:1
@@ -976,12 +953,9 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                         style={{ background:cardBg, border:`1.5px solid ${cardBorder}`, borderRadius:'var(--r-md)', opacity:cardOpacity, transition:'opacity 0.2s', position:'relative', overflow:'visible' }}
                       >
                         <div style={{ display:'flex', alignItems:'center', gap:8, padding:'11px 12px' }}>
-                          {/* Sürükleme tutamacı */}
                           {!isEnded && (
                             <div style={{ color:'var(--text3)', fontSize:15, cursor:'grab', flexShrink:0, userSelect:'none', lineHeight:1 }} title="Sürükle">⠿</div>
                           )}
-
-                          {/* Checkbox + isim */}
                           <div style={{ display:'flex', alignItems:'center', gap:10, flex:1, cursor:isActive?'pointer':'default' }} onClick={()=>isActive&&onToggleTask(t.id)}>
                             <div style={{ width:22, height:22, borderRadius:6, border:`2px solid ${q?`var(--${q})`:isActive?'var(--border2)':'var(--border)'}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, flexShrink:0, background:q?qBg[q]:'transparent', color:`var(--${q||'text3'})`, fontWeight:700 }}>
                               {isEnded?'■':isSkipped?'–':q?QSym[q]:''}
@@ -997,7 +971,6 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                             {q && isActive && <span style={{ fontSize:11, fontWeight:700, color:`var(--${q})`, background:qBg[q], padding:'2px 7px', borderRadius:99 }}>{QLabel[q]}</span>}
                           </div>
 
-                          {/* Durum etiketi + aksiyon menüsü */}
                           <TaskMenu
                             taskId={t.id}
                             status={tStatus}
@@ -1010,7 +983,6 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                           />
                         </div>
 
-                        {/* Kalite seçici */}
                         {q && isActive && (
                           <div style={{ display:'flex', gap:6, padding:'0 12px 11px' }}>
                             {['good','mid','bad'].map(qv => (
@@ -1192,7 +1164,6 @@ function RiskMeter({ score }) {
 
   return (
     <div>
-      {/* Zone etiketleri — şeridin üstünde */}
       <div style={{ display:'flex', marginBottom:6, gap:2 }}>
         {zones.map(z => {
           const isPast   = score > z.to
@@ -1205,7 +1176,6 @@ function RiskMeter({ score }) {
         })}
       </div>
 
-      {/* Şerit + ibre */}
       <div style={{ position:'relative', marginBottom:8 }}>
         <div style={{ display:'flex', height:22, borderRadius:99, overflow:'hidden', gap:2 }}>
           {zones.map(z => {
@@ -1216,14 +1186,12 @@ function RiskMeter({ score }) {
             )
           })}
         </div>
-        {/* İbre */}
         <div style={{ position:'absolute', top:-5, left:`${pct}%`, transform:'translateX(-50%)', pointerEvents:'none' }}>
           <div style={{ width:0, height:0, borderLeft:'6px solid transparent', borderRight:'6px solid transparent', borderTop:'8px solid var(--text)', margin:'0 auto' }} />
           <div style={{ background:'var(--text)', color:'var(--bg)', fontSize:11, fontWeight:800, padding:'2px 7px', borderRadius:99, textAlign:'center', marginTop:2, whiteSpace:'nowrap' }}>{score}</div>
         </div>
       </div>
 
-      {/* Alt etiketler */}
       <div style={{ display:'flex', justifyContent:'space-between', padding:'0 2px', marginTop:28 }}>
         <span style={{ fontSize:10, color:'#4ade80', fontWeight:700 }}>← Düşük risk</span>
         <span style={{ fontSize:10, color:'#f87171', fontWeight:700 }}>Yüksek risk →</span>
@@ -1237,7 +1205,7 @@ function AnalyticsPanel({ goals, tasks, logs }) {
   const DOW_TR = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt']
   const today  = todayStr()
   const [expandedId, setExpandedId] = useState(null)
-  const [analyticTab, setAnalyticTab] = useState({}) // {goalId: 'overview'|'weekly'|'trend'|'tasks'}
+  const [analyticTab, setAnalyticTab] = useState({}) 
 
   if (!goals.length) return (
     <div style={{ textAlign:'center', padding:'60px 24px', color:'var(--text3)' }}>
@@ -1254,7 +1222,6 @@ function AnalyticsPanel({ goals, tasks, logs }) {
     const remaining = daysLeft(goal.start_date, goal.total_days)
     const op = Math.round(overallScore(gt,gl,goal.start_date,goal.total_days)*100)
 
-    // Günlük skorlar (sadece aktif günler)
     const daySc = []
     for (let i=0;i<e;i++) {
       const ds = addDays(goal.start_date,i)
@@ -1262,7 +1229,6 @@ function AnalyticsPanel({ goals, tasks, logs }) {
       if (sc >= 0) daySc.push({ ds, sc, dow: new Date(ds+'T00:00:00').getDay() })
     }
 
-    // ── Momentum: son 3 gün trendi (ağırlıklı) ──
     const last3  = daySc.slice(-3)
     const last7  = daySc.slice(-7)
     const prev7  = daySc.slice(-14,-7)
@@ -1270,22 +1236,18 @@ function AnalyticsPanel({ goals, tasks, logs }) {
     const l7avg  = last7.length  ? last7.reduce((s,x)=>s+x.sc,0)/last7.length   : 0
     const p7avg  = prev7.length  ? prev7.reduce((s,x)=>s+x.sc,0)/prev7.length   : null
     const momentum = daySc.length < 3 ? null : Math.round((l7avg - (p7avg??l7avg))*100)
-    // Son 3 günün yönü: pozitif mi negatif mi
     const recentTrend = last3.length >= 2
       ? (last3[last3.length-1].sc - last3[0].sc) * 100
       : null
 
-    // ── Tutarlılık ──
     const consistency = daySc.length ? Math.round(daySc.filter(x=>x.sc>=0.3).length/daySc.length*100) : 0
 
-    // ── Haftalık örüntü ──
     const dowMap = Array(7).fill(null).map(()=>({sum:0,cnt:0}))
     daySc.forEach(({sc,dow})=>{ dowMap[dow].sum+=sc; dowMap[dow].cnt++ })
     const dowAvg = dowMap.map(d=>d.cnt?Math.round(d.sum/d.cnt*100):null)
     const bestDow  = dowAvg.reduce((bi,v,i)=>v!==null&&(dowAvg[bi]===null||v>dowAvg[bi])?i:bi, 0)
     const worstDow = dowAvg.reduce((wi,v,i)=>v!==null&&(dowAvg[wi]===null||v<dowAvg[wi])?i:wi, 0)
 
-    // ── Görev başarı oranları ──
     const taskStats = gt.map(t=>{
       const tLogs = gl.filter(l=>l.task_id===t.id)
       let activeCnt=0, doneCnt=0
@@ -1300,7 +1262,6 @@ function AnalyticsPanel({ goals, tasks, logs }) {
       return { ...t, rate, qAvg, activeCnt, doneCnt }
     }).sort((a,b)=>b.rate-a.rate)
 
-    // ── Kalite trendi ──
     const half = Math.floor(daySc.length/2)
     const fhAvg = half>0 ? Math.round(daySc.slice(0,half).reduce((s,x)=>s+x.sc,0)/half*100) : null
     const shAvg = daySc.slice(half).length>0 ? Math.round(daySc.slice(half).reduce((s,x)=>s+x.sc,0)/daySc.slice(half).length*100) : null
@@ -1308,59 +1269,38 @@ function AnalyticsPanel({ goals, tasks, logs }) {
     const streak = getStreak(gt,gl,goal.start_date)
     const todaySc = dayScore(gt,gl,today)
 
-    // ── Kurtarılabilirlik: aktif gün oranını dikkate alarak WMA ──
     const allScores  = daySc.map(x=>x.sc)
     const globalAvg  = allScores.length ? allScores.reduce((s,x)=>s+x,0)/allScores.length : 0
     const last7sc    = allScores.slice(-7)
     const last7AvgR  = last7sc.length ? last7sc.reduce((s,x)=>s+x,0)/last7sc.length : globalAvg
-    // WMA: son 7 güne %70, genel geçmişe %30
     const effectiveRateR = (globalAvg * 0.3) + (last7AvgR * 0.7)
-    // Aktif gün oranı: geçen e günde kaçında aktif görev vardı?
     const activeRatioR   = e > 0 ? daySc.length / e : 1
-    // Takvim günü başına beklenen overallScore artışı
     const expectedTotalR = Math.max(daySc.length, goal.total_days * activeRatioR)
     const ratePerDayR    = expectedTotalR > 0 ? (activeRatioR * effectiveRateR) / expectedTotalR : 0
     const opFrac         = op / 100
     const needR          = ratePerDayR > 0 ? Math.ceil((1 - opFrac) / ratePerDayR) : 9999
     const diffR          = needR - remaining
-    const recoverable    = diffR <= 1  // 1 günlük tolerans
+    const recoverable    = diffR <= 1 
     const neededPerDay   = null
     const currentPerDay  = effectiveRateR
 
-    // ── GELİŞMİŞ RISK SKORU (0=güvenli, 100=çok riskli) ──
-    // 1. Veri güveni
     const dataConfidence = Math.min(1, e / 7)
-
-    // 2. İlerleme riski — kritik eşiğe yaklaştıkça ağırlık artar
     const timeRatio = e / goal.total_days
     const expectedProgress = timeRatio * 100
     const progressGap = Math.max(0, expectedProgress - op)
-    // Son %30'da baskı 3x, ortada 2x, başta 1x
     const pressureMultiplier = timeRatio > 0.7 ? 3 : timeRatio > 0.4 ? 2 : 1
     const progressRisk = Math.min(100, progressGap * pressureMultiplier)
-
-    // 3. Tutarlılık riski
     const consistencyRisk = Math.max(0, 100 - consistency)
-
-    // 4. Momentum riski: son trend
     const momentumRisk = recentTrend !== null
       ? Math.min(100, Math.max(0, -recentTrend * 2))
       : 30
-
-    // 5. Süre baskısı
     const timePressure = timeRatio > 0.7
       ? Math.min(100, progressGap * 3)
       : 0
-
-    // 6. Seri kırılma riski
     const streakRisk = (streak >= 3 && todaySc === 0 && activeTasks(gt,today).length > 0) ? 40 : 0
-
-    // 7. YENİ: Yorgunluk/tükenmişlik faktörü
-    // 14+ gün üst üste 0.9+ skor → "Dinlenme İhtiyacı" sinyali
     const last14 = daySc.slice(-14)
     const burnoutRisk = (last14.length >= 14 && last14.every(x => x.sc >= 0.9)) ? 20 : 0
 
-    // Ağırlıklı toplam
     const rawRisk = (
       progressRisk    * 0.30 +
       consistencyRisk * 0.22 +
@@ -1371,12 +1311,10 @@ function AnalyticsPanel({ goals, tasks, logs }) {
     )
     const riskScore = Math.round(rawRisk * dataConfidence + 50 * (1 - dataConfidence))
 
-    // Sağlık = risk'in tersi (gösterge tutarlılığı için)
     const healthScore = Math.max(0, 100 - riskScore)
     const healthLabel = riskScore<=20?'Mükemmel':riskScore<=40?'İyi':riskScore<=60?'Orta':riskScore<=80?'Zayıf':'Riskli'
     const healthColor = riskScore<=20?'var(--good)':riskScore<=40?'var(--accent)':riskScore<=60?'var(--mid)':riskScore<=80?'var(--fire)':'var(--bad)'
 
-    // ── Akıllı uyarılar ──
     const warnings = []
     if (streak>=3 && todaySc===0 && activeTasks(gt,today).length>0)
       warnings.push({ type:'danger', text:`🔥 ${streak} günlük serin tehlikede — bugün henüz görev işaretlemedin` })
@@ -1411,8 +1349,6 @@ function AnalyticsPanel({ goals, tasks, logs }) {
 
   return (
     <div>
-
-      {/* Genel özet kartlar */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginBottom:16 }}>
         {[
           { label:'Ort. Risk', val:avgRisk<=20?'Düşük':avgRisk<=40?'İyi':avgRisk<=60?'Orta':avgRisk<=80?'Zayıf':'Yüksek', color:avgRisk<=20?'var(--good)':avgRisk<=40?'var(--accent)':avgRisk<=60?'var(--mid)':avgRisk<=80?'var(--fire)':'var(--bad)' },
@@ -1426,7 +1362,6 @@ function AnalyticsPanel({ goals, tasks, logs }) {
         ))}
       </div>
 
-      {/* Uyarılar / içgörüler */}
       {allWarnings.length>0 && (
         <div style={{ marginBottom:16 }}>
           <div style={{ ...css.label, marginBottom:8 }}>Akıllı İçgörüler</div>
@@ -1440,7 +1375,6 @@ function AnalyticsPanel({ goals, tasks, logs }) {
         </div>
       )}
 
-      {/* Her hedef için accordion analiz kartları */}
       {goalAnalytics.map(({ goal, op, riskScore, momentum, recentTrend, consistency, dowAvg, bestDow, worstDow, taskStats, fhAvg, shAvg, daySc, e, remaining, recoverable, diffR }) => {
         const isOpen = expandedId === goal.id
         const atab   = analyticTab[goal.id] || 'overview'
@@ -1449,12 +1383,10 @@ function AnalyticsPanel({ goals, tasks, logs }) {
         return (
           <div key={goal.id} style={{ background:'var(--surface)', border:`1.5px solid ${riskScore>70?'rgba(248,113,113,0.3)':riskScore>40?'rgba(251,191,36,0.2)':'var(--border)'}`, borderRadius:20, marginBottom:10, overflow:'hidden' }}>
 
-            {/* Tıklanabilir başlık */}
             <div onClick={()=>setExpandedId(isOpen?null:goal.id)} style={{ padding:'13px 16px', cursor:'pointer', userSelect:'none' }}>
               <div style={{ display:'flex', alignItems:'center', gap:10 }}>
                 <div style={{ flex:1 }}>
                   <div style={{ fontSize:14, fontWeight:700, color:'var(--text)', marginBottom:6 }}>{goal.name}</div>
-                  {/* Mini risk şeridi */}
                   <div style={{ height:4, background:'var(--surface2)', borderRadius:99, overflow:'hidden', marginBottom:5 }}>
                     <div style={{ height:'100%', width:`${riskScore}%`, background:riskColor, borderRadius:99 }}/>
                   </div>
@@ -1468,11 +1400,9 @@ function AnalyticsPanel({ goals, tasks, logs }) {
               </div>
             </div>
 
-            {/* Açılır detay */}
             {isOpen && (
               <div className="anim-expand" style={{ borderTop:'1.5px solid var(--border)' }}>
 
-                {/* Sekmeler */}
                 <div style={{ display:'flex', background:'var(--surface2)', borderRadius:'var(--r-md)', padding:3, margin:'12px 16px 0' }}>
                   {[['overview','Özet'],['weekly','Haftalık'],['trend','Trend'],['tasks','Görevler']].map(([t,l])=>(
                     <button key={t} style={css.tab(atab===t)} onClick={()=>setAnalyticTab(p=>({...p,[goal.id]:t}))}>{l}</button>
@@ -1481,7 +1411,6 @@ function AnalyticsPanel({ goals, tasks, logs }) {
 
                 <div style={{ padding:'12px 16px 16px' }}>
 
-                  {/* ÖZET */}
                   {atab==='overview' && (
                     <div className="anim-tab">
                       <div style={{ marginBottom:14 }}>
@@ -1523,7 +1452,6 @@ function AnalyticsPanel({ goals, tasks, logs }) {
                     </div>
                   )}
 
-                  {/* HAFTALIK */}
                   {atab==='weekly' && (
                     <div className="anim-tab">
                       {e<7 ? (
@@ -1556,7 +1484,6 @@ function AnalyticsPanel({ goals, tasks, logs }) {
                     </div>
                   )}
 
-                  {/* TREND */}
                   {atab==='trend' && (
                     <div className="anim-tab">
                       {fhAvg===null||shAvg===null||e<6 ? (
@@ -1589,7 +1516,6 @@ function AnalyticsPanel({ goals, tasks, logs }) {
                     </div>
                   )}
 
-                  {/* GÖREVLER */}
                   {atab==='tasks' && (
                     <div className="anim-tab">
                       <div style={{ ...css.label, marginBottom:10 }}>Görev Başarı Oranları</div>
@@ -1624,11 +1550,9 @@ function AnalyticsPanel({ goals, tasks, logs }) {
 /* ─── Heatmap Calendar ───────────────────────────────────────────────────── */
 function HeatmapCalendar({ tasks, logs, startDate, totalDays }) {
   const today = todayStr()
-  // Son 3 ayı göster (veya hedef başından beri hangisi kısaysa)
   const endDate   = today
   const startShow = addDays(today, -89) < startDate ? startDate : addDays(today, -89)
 
-  // Tüm günleri hesapla
   const days = []
   let cur = new Date(startShow + 'T00:00:00')
   const end = new Date(endDate + 'T00:00:00')
@@ -1643,15 +1567,12 @@ function HeatmapCalendar({ tasks, logs, startDate, totalDays }) {
     cur.setDate(cur.getDate() + 1)
   }
 
-  // Haftalara böl (Pazartesi başlangıç)
-  // İlk günün haftasını bul
   const firstDow = days[0]?.dow ?? 0
   const padStart = firstDow === 0 ? 6 : firstDow - 1
   const paddedDays = [...Array(padStart).fill(null), ...days]
   const weeks = []
   for (let i = 0; i < paddedDays.length; i += 7) weeks.push(paddedDays.slice(i, i+7))
 
-  // Ay etiketleri
   const monthLabels = []
   let lastMonth = -1
   weeks.forEach((week, wi) => {
@@ -1663,18 +1584,17 @@ function HeatmapCalendar({ tasks, logs, startDate, totalDays }) {
 
   function cellColor(d) {
     if (!d || !d.inGoal || d.isFuture) return 'var(--surface2)'
-    if (!d.isActive) return 'rgba(124,111,247,0.08)' // aktif görev yok bu gün
+    if (!d.isActive) return 'rgba(124,111,247,0.08)' 
     const sc = d.sc
     if (sc >= 0.8) return 'rgba(74,222,128,0.85)'
     if (sc >= 0.5) return 'rgba(74,222,128,0.45)'
     if (sc >= 0.2) return 'rgba(251,191,36,0.55)'
     if (sc  >  0)  return 'rgba(248,113,113,0.5)'
-    return 'rgba(248,113,113,0.18)' // aktif gün ama yapılmadı
+    return 'rgba(248,113,113,0.18)' 
   }
 
   const DOW_SHORT = ['Pt','Sa','Ça','Pe','Cu','Ct','Pz']
 
-  // İstatistikler
   const activeDays = days.filter(d => d.inGoal && !d.isFuture && d.isActive)
   const doneDays   = activeDays.filter(d => d.sc >= 0.5)
   const perfectDays= activeDays.filter(d => d.sc >= 0.9)
@@ -1684,7 +1604,6 @@ function HeatmapCalendar({ tasks, logs, startDate, totalDays }) {
     <div>
       <div style={{ ...css.label, marginBottom:10 }}>Aktivite Takvimi</div>
 
-      {/* Ay etiketleri */}
       <div style={{ display:'flex', marginBottom:4, paddingLeft:22 }}>
         {weeks.map((_, wi) => {
           const ml = monthLabels.find(m => m.wi === wi)
@@ -1693,14 +1612,12 @@ function HeatmapCalendar({ tasks, logs, startDate, totalDays }) {
       </div>
 
       <div style={{ display:'flex', gap:2 }}>
-        {/* Gün etiketleri */}
         <div style={{ display:'flex', flexDirection:'column', gap:2, marginRight:2 }}>
           {DOW_SHORT.map((d,i) => (
             <div key={i} style={{ height:12, fontSize:8, color:'var(--text3)', display:'flex', alignItems:'center', fontWeight:500 }}>{i%2===0?d:''}</div>
           ))}
         </div>
 
-        {/* Hücre grid */}
         <div style={{ display:'flex', gap:2, flex:1 }}>
           {weeks.map((week, wi) => (
             <div key={wi} style={{ display:'flex', flexDirection:'column', gap:2, flex:1 }}>
@@ -1717,7 +1634,6 @@ function HeatmapCalendar({ tasks, logs, startDate, totalDays }) {
         </div>
       </div>
 
-      {/* Legend */}
       <div style={{ display:'flex', gap:10, marginTop:8, flexWrap:'wrap' }}>
         {[
           ['rgba(74,222,128,0.85)','%80+'],
@@ -1733,7 +1649,6 @@ function HeatmapCalendar({ tasks, logs, startDate, totalDays }) {
         ))}
       </div>
 
-      {/* Özet istatistikler */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginTop:14 }}>
         {[
           { label:'Aktif Gün', val:doneDays.length, color:'var(--good)' },
@@ -1759,14 +1674,11 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
 
   const weekTasks = tasks.filter(t => t.week_number === activeWeek)
   const weekName  = weekTasks[0]?.week_name || `${activeWeek}. Hafta`
-  // Her haftanın telafi günü task'lardaki week_buffer_day'den
   const bufferDow = weekTasks.find(t=>t.week_buffer_day!=null)?.week_buffer_day ?? null
 
-  // Bu haftanın tarih aralığı
   const wStart = goal?.start_date ? addDays(goal.start_date,(activeWeek-1)*7) : todayStr()
   const wEnd   = goal?.start_date ? addDays(goal.start_date, activeWeek*7)    : todayStr()
 
-  // O haftanın aktif günleri: normal active_days + bu haftaya aktarılan extra_dates + telafi günü
   const extraDowsThisWeek = new Set(
     tasks.flatMap(t=>(t.extra_dates||[]).map(String))
       .filter(d=>d>=wStart && d<wEnd)
@@ -1778,12 +1690,10 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
     (bufferDow!=null && d===bufferDow)
   )
 
-  // Bugün bu haftada mı?
   const isCurrent = activeWeek === currentWeekNum
 
   return (
     <div>
-      {/* Hafta sekmeleri */}
       <div style={{ display:'flex', gap:5, overflowX:'auto', paddingBottom:8, marginBottom:12, WebkitOverflowScrolling:'touch' }}>
         {allWeekNums.map(wn => {
           const wTasks = tasks.filter(t=>t.week_number===wn)
@@ -1808,7 +1718,6 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
         })}
       </div>
 
-      {/* Haftanın başlığı */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
         <div>
           <div style={{ fontSize:13, fontWeight:700, color:'var(--text)' }}>{weekName}</div>
@@ -1823,18 +1732,15 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
         )}
       </div>
 
-      {/* Günlere göre grupla */}
       {activeDows.length===0 ? (
         <div style={{ textAlign:'center', padding:'20px 0', color:'var(--text3)', fontSize:13 }}>Bu haftada görev yok</div>
       ) : activeDows.map(dow => {
         const isBufferDay = bufferDow!=null && bufferDow===dow
-        // Bu günün tam tarihini bul
         let dowDate = null
         for(let i=0;i<7;i++){
           const d = addDays(wStart,i)
           if(new Date(d+'T00:00:00').getDay()===dow){ dowDate=d; break }
         }
-        // Normal görevler + bu güne aktarılanlar (tüm task'lardan)
         const normalTasks = weekTasks.filter(t => t.active_days?.includes(dow) && !t.is_buffer)
         const transferredIn = dowDate ? tasks.filter(t =>
           !t.active_days?.includes(dow) &&
@@ -1894,12 +1800,9 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
                             onTransferTask(t.id, tomorrow)
                           } : null}
                           onTransferToBuffer={onTransferTask && bufferDow!=null ? ()=>{
-                            // Bu haftanın (activeWeek) telafi gününün tam tarihini bul
-                            // Haftanın başlangıç ve bitiş aralığında bufferDow'u ara
                             const weekStartDate = addDays(goal.start_date, (activeWeek-1)*7)
                             const weekEndDate   = addDays(goal.start_date, activeWeek*7)
                             let bufDate = null
-                            // weekStartDate'den weekEndDate'e kadar gün gün tara
                             let cur = weekStartDate
                             for(let i=0; i<7; i++){
                               const ds = addDays(weekStartDate, i)
@@ -1911,7 +1814,6 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
                             }
                             if(bufDate) onTransferTask(t.id, bufDate)
                             else {
-                              // Haftada bu dow yoksa bir sonraki haftadan bul
                               for(let i=0; i<14; i++){
                                 const ds = addDays(weekStartDate, i)
                                 if(new Date(ds+'T00:00:00').getDay() === bufferDow){
@@ -1941,7 +1843,6 @@ function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onTo
         )
       })}
 
-      {/* Haftalık değerlendirme butonu — aktif haftanın altında */}
       {isCurrent && onWeekClose && (
         <div style={{ marginTop:16, background:'rgba(124,111,247,0.07)', border:'1.5px solid rgba(124,111,247,0.2)', borderRadius:14, padding:'13px 14px' }}>
           <div style={{ fontSize:12, color:'var(--text3)', marginBottom:10 }}>
@@ -1982,7 +1883,6 @@ const menuBtn = {
   fontWeight:500, cursor:'pointer', fontFamily:'inherit', textAlign:'left'
 }
 
-// Görev satırı içinde inline action butonları
 function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, onRestore, isPro, onTransferToTomorrow, onTransferToBuffer, bufferDay }) {
   const isOpen    = openId === taskId
   const isActive  = status === 'active'
@@ -2018,7 +1918,6 @@ function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, 
   return (
     <div data-taskmenu={taskId} style={{ display:'flex', alignItems:'center', gap:5, flexShrink:0 }} onClick={e=>e.stopPropagation()}>
       {!isOpen ? (
-        // 3 nokta butonu
         <button
           onClick={()=>setOpenId(taskId)}
           style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', padding:'4px 7px', borderRadius:6, display:'flex', flexDirection:'column', alignItems:'center', gap:3.5, flexShrink:0 }}
@@ -2028,7 +1927,6 @@ function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, 
           <span style={{ display:'block', width:3.5, height:3.5, borderRadius:'50%', background:'currentColor' }}/>
         </button>
       ) : (
-        // Inline aksiyon butonları
         <>
           {isPro && isActive && onTransferToTomorrow && pill('Yarın', '📅', onTransferToTomorrow, 'mid')}
           {isPro && isActive && onTransferToBuffer    && pill('Telafi', '⚡', onTransferToBuffer, 'mid')}
@@ -2036,7 +1934,6 @@ function TaskMenu({ taskId, status, openId, setOpenId, onSkip, onUnskip, onEnd, 
           {isSkipped                                  && pill('Geri al', '↩', onUnskip, 'good')}
           {!isEnded                                   && pill('Sonlandır', '⏹', ()=>{ if(confirm(`"Görevi sonlandır" — geçmiş korunur`)) onEnd() }, 'bad')}
           {isEnded                                    && pill('Geri al', '▶', onRestore, 'good')}
-          {/* Kapat */}
           <button
             onClick={()=>setOpenId(null)}
             style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', fontSize:16, padding:'2px 4px', lineHeight:1, flexShrink:0 }}
@@ -2073,7 +1970,6 @@ const GOAL_TEMPLATES = [
 function GoalModal({ goal, tasks, onSave, onClose }) {
   const [name,     setName]     = useState(goal?.name||'')
   const [days,     setDays]     = useState(goal?.total_days||'')
-  // taskList: [{name, active_days, _key}]
   const initTasks = tasks.length
     ? tasks.map((t,i) => ({ id:t.id, name:t.name, active_days:t.active_days||[], difficulty:t.difficulty||1, _key:i }))
     : [{ name:'', active_days:[], _key:0 }]
@@ -2121,7 +2017,6 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
           <button onClick={onClose} style={{ ...css.iconBtn }}>✕</button>
         </div>
 
-        {/* Şablon seçici — sadece yeni hedefte */}
         {!goal && (
           <div style={{ marginBottom:16 }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8 }}>
@@ -2178,9 +2073,7 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
                 onDragOver={e=>e.preventDefault()}
                 style={{ opacity:1, transition:'opacity 0.15s' }}
               >
-                {/* Görev satırı */}
                 <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:6 }}>
-                  {/* Sürükleme tutamacı */}
                   <div
                     title="Sürükle"
                     style={{ color:'var(--text3)', fontSize:16, cursor:'grab', flexShrink:0, padding:'0 2px', userSelect:'none', lineHeight:1, display:'flex', alignItems:'center' }}
@@ -2191,7 +2084,6 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
                     placeholder={`Görev ${i+1}`}
                     style={{ ...css.input, flex:1 }}
                   />
-                  {/* Zorluk seçici */}
                   <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:3, flexShrink:0 }}>
                     <span style={{ fontSize:9, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'.06em', lineHeight:1 }}>Zorluk</span>
                     <div style={{ display:'flex', gap:3 }}>
@@ -2215,7 +2107,6 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
                       })}
                     </div>
                   </div>
-                  {/* Takvim ikonu */}
                   <button
                     onClick={()=>setDayPicker(dayPicker===i?null:i)}
                     title="Hangi günler?"
@@ -2229,7 +2120,6 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
                   <button onClick={()=>{ if(taskList.length>1) setTaskList(p=>p.filter((_,j)=>j!==i)) }} style={{ ...css.iconBtn, flexShrink:0 }}>✕</button>
                 </div>
 
-                {/* Gün seçici */}
                 {dayPicker===i && (
                   <div style={{ background:'var(--surface2)', border:'1.5px solid var(--border)', borderRadius:'var(--r-md)', padding:'10px 12px', marginBottom:4 }}>
                     <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.07em', color:'var(--text3)', marginBottom:8 }}>
@@ -2256,7 +2146,6 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
                   </div>
                 )}
 
-                {/* Seçili günler özeti */}
                 {t.active_days.length > 0 && dayPicker!==i && (
                   <div style={{ fontSize:11, color:'var(--accent2)', paddingLeft:4 }}>
                     📅 {t.active_days.map(d=>DOW_TR[d]).join(', ')}
@@ -2322,13 +2211,11 @@ function OnboardingModal({ onClose }) {
       <div style={{ position:'fixed', inset:0, background:'rgba(5,6,10,0.88)', backdropFilter:'blur(6px)', zIndex:500 }} onClick={onClose} />
       <div style={{ position:'fixed', top:'50%', left:'50%', transform:'translate(-50%,-50%)', zIndex:501, width:'min(420px,92vw)', background:'var(--surface)', border:'1.5px solid var(--border)', borderRadius:24, overflow:'hidden' }}>
 
-        {/* Progress bar */}
         <div style={{ height:3, background:'#242830' }}>
           <div style={{ height:'100%', width:`${((step+1)/steps.length)*100}%`, background:'#7c6ff7', transition:'width 0.3s' }} />
         </div>
 
         <div style={{ padding:'28px 24px 24px' }}>
-          {/* Icon + step */}
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
             <div style={{ fontSize:40 }}>{s.icon}</div>
             <div style={{ fontSize:12, color:'#5c6475' }}>{step+1} / {steps.length}</div>
@@ -2337,12 +2224,10 @@ function OnboardingModal({ onClose }) {
           <div style={{ fontSize:18, fontWeight:800, color:'var(--text)', marginBottom:10 }}>{s.title}</div>
           <div style={{ fontSize:14, fontWeight:500, color:'var(--text2)', lineHeight:1.7, marginBottom:16 }}>{s.desc}</div>
 
-          {/* Tip kutusu */}
           <div style={{ background:'rgba(124,111,247,0.08)', border:'1.5px solid rgba(124,111,247,0.2)', borderRadius:14, padding:'10px 14px', fontSize:13, color:'#a89cf7', marginBottom:24 }}>
             💡 {s.tip}
           </div>
 
-          {/* Butonlar */}
           <div style={{ display:'flex', gap:10 }}>
             {step > 0 && (
               <button onClick={()=>setStep(p=>p-1)} style={{ padding:'10px 16px', background:'var(--surface2)', border:'1.5px solid var(--border)', borderRadius:14, color:'var(--text2)', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>← Geri</button>
@@ -2355,7 +2240,6 @@ function OnboardingModal({ onClose }) {
             </button>
           </div>
 
-          {/* Atla */}
           {!isLast && (
             <button onClick={onClose} style={{ display:'block', width:'100%', marginTop:12, padding:'8px', background:'transparent', border:'none', color:'var(--text3)', fontSize:12, cursor:'pointer', fontFamily:'inherit' }}>
               Atla
