@@ -1017,17 +1017,33 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                 </div>
                 <NoteSection goalId={goal.id} ds={today} notes={notes} noteInputs={noteInputs} onNoteChange={onNoteChange} onSaveNote={onSaveNote} />
 
-                {logs.length > 0 && (
-                  <div style={{ marginTop:16 }}>
-                    <div style={{ ...css.label, marginBottom:8 }}>Toplam Kalite Dağılımı</div>
-                    <div style={{ display:'flex', gap:12, fontSize:13, marginBottom:8 }}>
-                      <span style={{ color:'var(--good)' }}>✓ İyi: {logs.filter(l=>l.quality==='good').length}</span>
-                      <span style={{ color:'var(--mid)' }}>− Orta: {logs.filter(l=>l.quality==='mid').length}</span>
-                      <span style={{ color:'var(--bad)' }}>✕ Kötü: {logs.filter(l=>l.quality==='bad').length}</span>
+                {(() => {
+                  const goodCnt = logs.filter(l=>l.quality==='good').length
+                  const midCnt  = logs.filter(l=>l.quality==='mid').length
+                  const badCnt  = logs.filter(l=>l.quality==='bad').length
+                  // Yapılmayan: tüm geçen aktif gün-görev çiftleri - yapılanlar
+                  const elapsed2 = daysElapsed(goal.start_date)
+                  let totalActiveSlots = 0
+                  for (let i=0;i<elapsed2;i++) {
+                    const ds2 = addDays(goal.start_date,i)
+                    const act = activeTasks(tasks,ds2)
+                    totalActiveSlots += act.length
+                  }
+                  const doneCnt    = goodCnt + midCnt + badCnt
+                  const missedCnt  = Math.max(0, totalActiveSlots - doneCnt)
+                  return (
+                    <div style={{ marginTop:16 }}>
+                      <div style={{ ...css.label, marginBottom:8 }}>Toplam Kalite Dağılımı</div>
+                      <div style={{ display:'flex', flexWrap:'wrap', gap:10, fontSize:13, marginBottom:8 }}>
+                        <span style={{ color:'var(--good)' }}>✓ İyi: {goodCnt}</span>
+                        <span style={{ color:'var(--mid)' }}>− Orta: {midCnt}</span>
+                        <span style={{ color:'var(--bad)' }}>✕ Kötü: {badCnt}</span>
+                        <span style={{ color:'var(--text3)' }}>○ Yapılmadı: {missedCnt}</span>
+                      </div>
+                      <QBar logs={logs} missed={missedCnt} total={totalActiveSlots} />
                     </div>
-                    <QBar logs={logs} />
-                  </div>
-                )}
+                  )
+                })()}
                 </>
                 )}
               </div>
@@ -1128,17 +1144,19 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
 }
 
 /* ─── Quality Bar ────────────────────────────────────────────────────────── */
-function QBar({ logs }) {
-  const good = logs.filter(l=>l.quality==='good').length
-  const mid  = logs.filter(l=>l.quality==='mid').length
-  const bad  = logs.filter(l=>l.quality==='bad').length
-  const total = good+mid+bad
+function QBar({ logs, missed=0, total: totalProp }) {
+  const good  = logs.filter(l=>l.quality==='good').length
+  const mid   = logs.filter(l=>l.quality==='mid').length
+  const bad   = logs.filter(l=>l.quality==='bad').length
+  const done  = good + mid + bad
+  const total = totalProp || done
   if (!total) return null
   return (
     <div style={{ display:'flex', height:6, borderRadius:99, overflow:'hidden', gap:1 }}>
-      <div style={{ flex:good, background:'var(--good)', opacity:0.7, borderRadius:99 }} />
-      <div style={{ flex:mid,  background:'var(--mid)',  opacity:0.7, borderRadius:99 }} />
-      <div style={{ flex:bad,  background:'var(--bad)',  opacity:0.7, borderRadius:99 }} />
+      {good   > 0 && <div style={{ flex:good,   background:'var(--good)', opacity:0.75 }} />}
+      {mid    > 0 && <div style={{ flex:mid,    background:'var(--mid)',  opacity:0.75 }} />}
+      {bad    > 0 && <div style={{ flex:bad,    background:'var(--bad)',  opacity:0.75 }} />}
+      {missed > 0 && <div style={{ flex:missed, background:'var(--border)', opacity:1 }} />}
     </div>
   )
 }
@@ -1541,18 +1559,26 @@ function AnalyticsPanel({ goals, tasks, logs }) {
                     <div className="anim-tab">
                       <div style={{ ...css.label, marginBottom:10 }}>Görev Başarı Oranları</div>
                       <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                        {taskStats.map(t=>(
+                        {taskStats.map(t=>{
+                          const missedCnt = t.activeCnt - t.doneCnt
+                          const tGood = t.doneCnt ? Math.round(t.qAvg * t.doneCnt / 100) : 0
+                          return (
                           <div key={t.id}>
                             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:3 }}>
                               <span style={{ fontSize:12, color:'var(--text2)', flex:1, marginRight:8 }}>{t.name}</span>
-                              <span style={{ fontSize:12, fontWeight:700, color:t.rate>=70?'var(--good)':t.rate>=40?'var(--mid)':'var(--bad)', minWidth:32, textAlign:'right' }}>{t.rate}%</span>
-                              {t.qAvg>0 && <span style={{ fontSize:10, color:'var(--text3)', marginLeft:8 }}>kalite {t.qAvg}%</span>}
+                              <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0 }}>
+                                <span style={{ fontSize:11, color:'var(--good)' }}>✓{t.doneCnt}</span>
+                                {missedCnt>0 && <span style={{ fontSize:11, color:'var(--text3)' }}>○{missedCnt}</span>}
+                                <span style={{ fontSize:12, fontWeight:700, color:t.rate>=70?'var(--good)':t.rate>=40?'var(--mid)':'var(--bad)' }}>{t.rate}%</span>
+                              </div>
                             </div>
-                            <div style={{ height:5, background:'var(--surface2)', borderRadius:99, overflow:'hidden' }}>
-                              <div style={{ height:'100%', width:`${t.rate}%`, background:t.rate>=70?'var(--good)':t.rate>=40?'var(--mid)':'var(--bad)', borderRadius:99 }} />
+                            <div style={{ height:5, background:'var(--surface2)', borderRadius:99, overflow:'hidden', display:'flex', gap:1 }}>
+                              <div style={{ flex:t.doneCnt, height:'100%', background:t.rate>=70?'var(--good)':t.rate>=40?'var(--mid)':'var(--bad)', opacity:0.8 }} />
+                              {missedCnt>0 && <div style={{ flex:missedCnt, height:'100%', background:'var(--border)' }} />}
                             </div>
                           </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     </div>
                   )}
