@@ -59,27 +59,145 @@ const css = {
   },
 }
 
+// Arşiv hedef detay ekranı
+function ArchiveDetail({ goal, tasks, logs, onBack, onUnarchive }) {
+  const totalLogs = logs.length
+  const goodLogs  = logs.filter(l => l.quality === 'good').length
+  const midLogs   = logs.filter(l => l.quality === 'mid').length
+  const badLogs   = logs.filter(l => l.quality === 'bad').length
+  const qs = totalLogs ? Math.round((goodLogs*100 + midLogs*60 + badLogs*30) / totalLogs) : 0
+  const elapsed = Math.max(0, Math.floor((new Date() - new Date(goal.start_date)) / 86400000))
+
+  // Seri
+  let streak = 0
+  for (let i = 0; i < 365; i++) {
+    const d = new Date(); d.setDate(d.getDate() - i)
+    const ds = d.toISOString().slice(0,10)
+    if (ds < goal.start_date) break
+    const dayLogs = logs.filter(l => l.log_date === ds)
+    const act = tasks.filter(t => !t.active_days?.length || t.active_days.includes(d.getDay()))
+    if (!act.length) continue
+    const sc = act.length ? dayLogs.length / act.length : 0
+    const todayDs = new Date().toISOString().slice(0,10)
+    if (ds === todayDs && sc === 0 && !dayLogs.length) continue
+    if (sc >= 0.5) streak++; else break
+  }
+
+  // Son 30 gün
+  const last30 = []
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i)
+    const ds = d.toISOString().slice(0,10)
+    if (ds < goal.start_date) continue
+    const dayLogs = logs.filter(l => l.log_date === ds)
+    const act = tasks.filter(t => !t.active_days?.length || t.active_days.includes(d.getDay()))
+    if (!act.length) continue
+    last30.push({ ds, sc: act.length ? dayLogs.length / act.length : 0 })
+  }
+
+  const completionPct = tasks.length && elapsed
+    ? Math.min(100, Math.round(totalLogs / (tasks.length * elapsed) * 100))
+    : 0
+
+  return (
+    <div>
+      <button onClick={onBack} style={{ background:'none', border:'none', color:'var(--accent)', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'inherit', padding:'0 0 12px', display:'flex', alignItems:'center', gap:5 }}>
+        ← Arşiv Listesi
+      </button>
+
+      <div style={{ background:'var(--surface2)', borderRadius:16, padding:14, marginBottom:12 }}>
+        <div style={{ fontSize:15, fontWeight:800, color:'var(--text)', marginBottom:4 }}>{goal.name}</div>
+        <div style={{ fontSize:11, color:'var(--text3)' }}>{goal.total_days} günlük hedef · {elapsed} gün takip edildi</div>
+      </div>
+
+      {/* İstatistikler */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginBottom:12 }}>
+        {[
+          { label:'Tamamlama', val:`${completionPct}%`, color:'var(--accent)' },
+          { label:'Kalite',    val:`${qs}%`, color:qs>=70?'var(--good)':qs>=40?'var(--mid)':'var(--bad)' },
+          { label:'Seri',      val:`${streak}🔥`, color:'var(--fire)' },
+        ].map(s => (
+          <div key={s.label} style={{ background:'var(--surface2)', borderRadius:12, padding:'10px 8px', textAlign:'center' }}>
+            <div style={{ fontSize:9, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:3 }}>{s.label}</div>
+            <div style={{ fontSize:18, fontWeight:800, color:s.color }}>{s.val}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Kalite dağılımı */}
+      <div style={{ background:'var(--surface2)', borderRadius:14, padding:12, marginBottom:12 }}>
+        <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:10 }}>Kalite Dağılımı</div>
+        <div style={{ display:'flex', gap:10, fontSize:12, marginBottom:8 }}>
+          <span style={{ color:'var(--good)' }}>✓ İyi: {goodLogs}</span>
+          <span style={{ color:'var(--mid)' }}>− Orta: {midLogs}</span>
+          <span style={{ color:'var(--bad)' }}>✕ Kötü: {badLogs}</span>
+        </div>
+        {totalLogs > 0 && (
+          <div style={{ display:'flex', height:8, borderRadius:99, overflow:'hidden', gap:2 }}>
+            {goodLogs > 0 && <div style={{ flex:goodLogs, background:'var(--good)', opacity:.8 }}/>}
+            {midLogs  > 0 && <div style={{ flex:midLogs,  background:'var(--mid)',  opacity:.8 }}/>}
+            {badLogs  > 0 && <div style={{ flex:badLogs,  background:'var(--bad)',  opacity:.8 }}/>}
+          </div>
+        )}
+      </div>
+
+      {/* Son 30 gün */}
+      {last30.length > 0 && (
+        <div style={{ background:'var(--surface2)', borderRadius:14, padding:12, marginBottom:12 }}>
+          <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:10 }}>Son 30 Gün Performansı</div>
+          <div style={{ display:'flex', alignItems:'flex-end', gap:3, height:48 }}>
+            {last30.map((d,i) => (
+              <div key={i} style={{ flex:1, height:`${Math.max(d.sc*100,5)}%`, background:d.sc>=0.7?'var(--good)':d.sc>=0.4?'var(--mid)':'var(--bad)', borderRadius:3, opacity:.8 }} title={d.ds}/>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Görevler */}
+      <div style={{ background:'var(--surface2)', borderRadius:14, padding:12, marginBottom:16 }}>
+        <div style={{ fontSize:10, fontWeight:700, color:'var(--text3)', textTransform:'uppercase', letterSpacing:'.06em', marginBottom:10 }}>Görevler ({tasks.length})</div>
+        {tasks.map(t => {
+          const tLogs = logs.filter(l => l.task_id === t.id)
+          const tQs = tLogs.length ? Math.round(tLogs.reduce((s,l) => s + (l.quality==='good'?100:l.quality==='mid'?60:30), 0) / tLogs.length) : 0
+          return (
+            <div key={t.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0', borderBottom:'1px solid var(--border)' }}>
+              <div style={{ flex:1, fontSize:13, color:'var(--text2)' }}>{t.name}</div>
+              <span style={{ fontSize:11, color:tQs>=70?'var(--good)':tQs>=40?'var(--mid)':'var(--text3)', fontWeight:600 }}>{tLogs.length} log · {tQs}%</span>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Arşivden çıkar */}
+      <button
+        onClick={() => { onUnarchive && onUnarchive(goal.id); onBack() }}
+        style={{ width:'100%', padding:'12px', background:'rgba(74,222,128,0.1)', border:'1.5px solid rgba(74,222,128,0.3)', borderRadius:14, color:'var(--good)', fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}
+      >
+        ✅ Arşivden Çıkar — Ana Listeye Taşı
+      </button>
+    </div>
+  )
+}
+
 export default function ProfilePanel({ user, onClose, onOpenSharedGoal, onSignOut, archivedGoals=[], archivedTasks={}, archivedLogs={}, onUnarchive }) {
-  const [profile, setProfile] = useState(null)
-  const [chatFriend, setChatFriend] = useState(null)
-  const [friends, setFriends] = useState([])
-  const [pending, setPending] = useState([])  // gelen istekler
-  const [sent, setSent]       = useState([])   // gönderilen istekler
-  const [searchCode, setSearchCode] = useState('')
+  const [profile,      setProfile]      = useState(null)
+  const [chatFriend,   setChatFriend]   = useState(null)
+  const [friends,      setFriends]      = useState([])
+  const [pending,      setPending]      = useState([])
+  const [sent,         setSent]         = useState([])
+  const [searchCode,   setSearchCode]   = useState('')
   const [searchResult, setSearchResult] = useState(null)
-  const [searching, setSearching] = useState(false)
-  const [copied, setCopied] = useState(false)
-  const [tab, setTab] = useState('friends') // friends | requests | archive
-  const [archiveTab, setArchiveTab] = useState(null) // seçili arşiv hedef id
+  const [searching,    setSearching]    = useState(false)
+  const [copied,       setCopied]       = useState(false)
+  const [tab,          setTab]          = useState('friends')
+  const [archiveTab,   setArchiveTab]   = useState(null)
   const supabase = createClient()
 
   useEffect(() => { loadAll() }, [user])
 
   async function loadAll() {
-    // Profile
     const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single()
     if (!p) {
-      // insert profile if not exists
       await supabase.from('profiles').insert({
         id: user.id,
         display_name: user.user_metadata?.full_name || user.email,
@@ -91,7 +209,6 @@ export default function ProfilePanel({ user, onClose, onOpenSharedGoal, onSignOu
       setProfile(p)
     }
 
-    // Friendships
     const { data: fs } = await supabase.from('friendships').select(`
       id, status, requester_id, receiver_id,
       requester:profiles!friendships_requester_id_fkey(id, display_name, avatar_url, user_code),
@@ -102,11 +219,9 @@ export default function ProfilePanel({ user, onClose, onOpenSharedGoal, onSignOu
       const accepted = fs.filter(f => f.status === 'accepted').map(f =>
         f.requester_id === user.id ? f.receiver : f.requester
       )
-      const incomingPending = fs.filter(f => f.status === 'pending' && f.receiver_id === user.id)
-      const outgoingPending = fs.filter(f => f.status === 'pending' && f.requester_id === user.id)
       setFriends(accepted)
-      setPending(incomingPending)
-      setSent(outgoingPending)
+      setPending(fs.filter(f => f.status === 'pending' && f.receiver_id === user.id))
+      setSent(fs.filter(f => f.status === 'pending' && f.requester_id === user.id))
     }
   }
 
@@ -117,7 +232,6 @@ export default function ProfilePanel({ user, onClose, onOpenSharedGoal, onSignOu
     const { data } = await supabase.from('profiles').select('*').eq('user_code', code).single()
     if (!data || data.id === user.id) setSearchResult('not_found')
     else {
-      // already friends?
       const already = friends.find(f => f.id === data.id)
       const alreadySent = sent.find(s => s.receiver_id === data.id)
       setSearchResult({ ...data, already: !!already, alreadySent: !!alreadySent })
@@ -154,6 +268,7 @@ export default function ProfilePanel({ user, onClose, onOpenSharedGoal, onSignOu
     <>
       <div style={css.overlay} onClick={onClose} />
       <div style={css.panel}>
+
         {/* Header */}
         <div style={css.header}>
           <div style={css.title}>Profil</div>
@@ -210,7 +325,6 @@ export default function ProfilePanel({ user, onClose, onOpenSharedGoal, onSignOu
               {searching ? '...' : 'Ara'}
             </button>
           </div>
-
           {searchResult === 'not_found' && (
             <div style={{ marginTop: 10, fontSize: 13, color: '#f87171' }}>Kullanıcı bulunamadı</div>
           )}
@@ -239,14 +353,14 @@ export default function ProfilePanel({ user, onClose, onOpenSharedGoal, onSignOu
             ['archive',  `📦 Arşiv${archivedGoals.length > 0 ? ` (${archivedGoals.length})` : ''}`],
           ].map(([t, l]) => (
             <button key={t} onClick={() => { setTab(t); setArchiveTab(null) }} style={{
-              flex: 1, padding: '8px', background: tab === t ? '#1c1f26' : 'transparent',
+              flex: 1, padding: '8px 4px', background: tab === t ? '#1c1f26' : 'transparent',
               border: 'none', borderRadius: 8, color: tab === t ? '#e2e6f0' : '#5c6475',
               fontSize: 11, fontWeight: tab === t ? 600 : 400, cursor: 'pointer', fontFamily: 'inherit',
             }}>{l}</button>
           ))}
         </div>
 
-        {/* Friends list */}
+        {/* Friends */}
         {tab === 'friends' && (
           <div style={{ padding: '12px 20px' }}>
             {friends.length === 0
@@ -258,15 +372,8 @@ export default function ProfilePanel({ user, onClose, onOpenSharedGoal, onSignOu
                     <div style={{ fontSize: 13, fontWeight: 500, color: '#e2e6f0' }}>{f.display_name}</div>
                     <div style={{ fontSize: 11, color: '#5c6475' }}>{f.user_code}</div>
                   </div>
-                  <button
-                    onClick={() => setChatFriend(f)}
-                    style={{ ...css.btn('secondary'), padding: '7px 10px', fontSize: 14 }}
-                    title="Mesaj gönder"
-                  >💬</button>
-                  <button
-                    onClick={() => { onOpenSharedGoal(f); onClose() }}
-                    style={{ ...css.btn('primary'), padding: '7px 12px', fontSize: 12 }}
-                  >Ortak Hedef</button>
+                  <button onClick={() => setChatFriend(f)} style={{ ...css.btn('secondary'), padding: '7px 10px', fontSize: 14 }} title="Mesaj gönder">💬</button>
+                  <button onClick={() => { onOpenSharedGoal(f); onClose() }} style={{ ...css.btn('primary'), padding: '7px 12px', fontSize: 12 }}>Ortak Hedef</button>
                   <button onClick={() => removeFriend(f.id)} style={{ ...css.btn('secondary'), padding: '7px 10px', fontSize: 12, color: '#f87171' }}>✕</button>
                 </div>
               ))
@@ -316,150 +423,37 @@ export default function ProfilePanel({ user, onClose, onOpenSharedGoal, onSignOu
             )}
           </div>
         )}
-      </div>
 
-        {/* Arşiv sekmesi */}
+        {/* Archive */}
         {tab === 'archive' && (
           <div style={{ padding: '12px 20px' }}>
             {archivedGoals.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '40px 0', color: '#5c6475', fontSize: 13 }}>
                 <div style={{ fontSize: 32, marginBottom: 10 }}>📦</div>
-                <div>Arşivlenen hedef yok</div>
-                <div style={{ fontSize: 11, marginTop: 6 }}>Hedef kartındaki arşiv simgesine basarak hedefleri buraya taşıyabilirsin</div>
+                <div style={{ fontWeight: 600, marginBottom: 6 }}>Arşivlenen hedef yok</div>
+                <div style={{ fontSize: 11 }}>Hedef kartındaki 📦 simgesine basarak hedefleri buraya taşıyabilirsin</div>
               </div>
             ) : archiveTab ? (
-              // Seçili hedefin detayı
-              (() => {
-                const goal = archivedGoals.find(g => g.id === archiveTab)
-                if (!goal) return null
-                const tasks = archivedTasks[goal.id] || []
-                const logs  = archivedLogs[goal.id]  || []
-                const totalLogs = logs.length
-                const goodLogs  = logs.filter(l=>l.quality==='good').length
-                const midLogs   = logs.filter(l=>l.quality==='mid').length
-                const badLogs   = logs.filter(l=>l.quality==='bad').length
-                const qs = totalLogs ? Math.round((goodLogs*100+midLogs*60+badLogs*30)/totalLogs) : 0
-
-                // Seri hesapla
-                let streak = 0
-                const todayDs = new Date().toISOString().slice(0,10)
-                const addD = (ds,n) => { const d=new Date(ds); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10) }
-                const elapsed = Math.max(0, Math.floor((new Date()-new Date(goal.start_date))/86400000))
-                for(let i=0;i<365;i++){
-                  const d=new Date(); d.setDate(d.getDate()-i)
-                  const ds=d.toISOString().slice(0,10)
-                  if(ds<goal.start_date) break
-                  const dayLogs = logs.filter(l=>l.log_date===ds)
-                  const activeTasks = tasks.filter(t=>{
-                    if(!t.active_days||t.active_days.length===0) return true
-                    return t.active_days.includes(d.getDay())
-                  })
-                  if(!activeTasks.length) continue
-                  const sc = dayLogs.length/activeTasks.length
-                  if(ds===todayDs&&sc===0&&!dayLogs.length) continue
-                  if(sc>=0.5) streak++; else break
-                }
-
-                // Gün bazlı performans (son 30 gün)
-                const last30 = []
-                for(let i=29;i>=0;i--){
-                  const d=new Date(); d.setDate(d.getDate()-i)
-                  const ds=d.toISOString().slice(0,10)
-                  if(ds<goal.start_date) continue
-                  const dayLogs=logs.filter(l=>l.log_date===ds)
-                  const act=tasks.filter(t=>!t.active_days?.length||t.active_days.includes(d.getDay()))
-                  if(!act.length) continue
-                  last30.push({ ds, sc: act.length?dayLogs.length/act.length:0 })
-                }
-
-                return (
-                  <div>
-                    <button onClick={()=>setArchiveTab(null)} style={{ background:'none',border:'none',color:'var(--accent)',fontSize:13,fontWeight:600,cursor:'pointer',fontFamily:'inherit',padding:'0 0 12px',display:'flex',alignItems:'center',gap:5 }}>
-                      ← Arşiv Listesi
-                    </button>
-                    <div style={{ background:'var(--surface2)',borderRadius:16,padding:14,marginBottom:12 }}>
-                      <div style={{ fontSize:15,fontWeight:800,color:'var(--text)',marginBottom:4 }}>{goal.name}</div>
-                      <div style={{ fontSize:11,color:'var(--text3)' }}>{goal.total_days} günlük hedef · {elapsed} gün takip edildi</div>
-                    </div>
-                    {/* İstatistikler */}
-                    <div style={{ display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:12 }}>
-                      {[
-                        { label:'Tamamlama', val:`${Math.round(totalLogs/(tasks.length*Math.max(elapsed,1))*100)}%`, color:'var(--accent)' },
-                        { label:'Kalite', val:`${qs}%`, color:qs>=70?'var(--good)':qs>=40?'var(--mid)':'var(--bad)' },
-                        { label:'Seri', val:`${streak}🔥`, color:'var(--fire)' },
-                      ].map(s=>(
-                        <div key={s.label} style={{ background:'var(--surface2)',borderRadius:12,padding:'10px 8px',textAlign:'center' }}>
-                          <div style={{ fontSize:9,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:3 }}>{s.label}</div>
-                          <div style={{ fontSize:18,fontWeight:800,color:s.color }}>{s.val}</div>
-                        </div>
-                      ))}
-                    </div>
-                    {/* Kalite dağılımı */}
-                    <div style={{ background:'var(--surface2)',borderRadius:14,padding:12,marginBottom:12 }}>
-                      <div style={{ fontSize:10,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:10 }}>Kalite Dağılımı</div>
-                      <div style={{ display:'flex',gap:10,fontSize:12,marginBottom:8 }}>
-                        <span style={{ color:'var(--good)' }}>✓ İyi: {goodLogs}</span>
-                        <span style={{ color:'var(--mid)' }}>− Orta: {midLogs}</span>
-                        <span style={{ color:'var(--bad)' }}>✕ Kötü: {badLogs}</span>
-                      </div>
-                      {totalLogs > 0 && (
-                        <div style={{ display:'flex',height:8,borderRadius:99,overflow:'hidden',gap:2 }}>
-                          {goodLogs>0&&<div style={{ flex:goodLogs,background:'var(--good)',opacity:.8 }}/>}
-                          {midLogs>0&&<div style={{ flex:midLogs,background:'var(--mid)',opacity:.8 }}/>}
-                          {badLogs>0&&<div style={{ flex:badLogs,background:'var(--bad)',opacity:.8 }}/>}
-                        </div>
-                      )}
-                    </div>
-                    {/* Son 30 gün grafiği */}
-                    {last30.length > 0 && (
-                      <div style={{ background:'var(--surface2)',borderRadius:14,padding:12,marginBottom:12 }}>
-                        <div style={{ fontSize:10,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:10 }}>Son 30 Gün</div>
-                        <div style={{ display:'flex',alignItems:'flex-end',gap:3,height:48 }}>
-                          {last30.map((d,i)=>(
-                            <div key={i} style={{ flex:1,height:`${Math.max(d.sc*100,5)}%`,background:d.sc>=0.7?'var(--good)':d.sc>=0.4?'var(--mid)':'var(--bad)',borderRadius:3,opacity:.8 }} title={d.ds}/>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {/* Görevler */}
-                    <div style={{ background:'var(--surface2)',borderRadius:14,padding:12,marginBottom:16 }}>
-                      <div style={{ fontSize:10,fontWeight:700,color:'var(--text3)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:10 }}>Görevler ({tasks.length})</div>
-                      {tasks.map(t=>{
-                        const tLogs=logs.filter(l=>l.task_id===t.id)
-                        const tQs=tLogs.length?Math.round(tLogs.reduce((s,l)=>s+(l.quality==='good'?100:l.quality==='mid'?60:30),0)/tLogs.length):0
-                        return (
-                          <div key={t.id} style={{ display:'flex',alignItems:'center',gap:8,padding:'8px 0',borderBottom:'1px solid var(--border)' }}>
-                            <div style={{ flex:1,fontSize:13,color:'var(--text2)' }}>{t.name}</div>
-                            <span style={{ fontSize:11,color:tQs>=70?'var(--good)':tQs>=40?'var(--mid)':'var(--text3)',fontWeight:600 }}>{tLogs.length} log · {tQs}%</span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                    {/* Arşivden çıkar */}
-                    <button
-                      onClick={()=>{ onUnarchive&&onUnarchive(goal.id); setArchiveTab(null) }}
-                      style={{ width:'100%',padding:'12px',background:'rgba(74,222,128,0.1)',border:'1.5px solid rgba(74,222,128,0.3)',borderRadius:14,color:'var(--good)',fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:'inherit' }}
-                    >
-                      ✅ Arşivden Çıkar — Ana Listeye Taşı
-                    </button>
-                  </div>
-                )
-              })()
+              <ArchiveDetail
+                goal={archivedGoals.find(g => g.id === archiveTab)}
+                tasks={archivedTasks[archiveTab] || []}
+                logs={archivedLogs[archiveTab] || []}
+                onBack={() => setArchiveTab(null)}
+                onUnarchive={onUnarchive}
+              />
             ) : (
-              // Arşiv listesi
               archivedGoals.map(goal => {
-                const goalTasks = archivedTasks[goal.id] || []
-                const goalLogs  = archivedLogs[goal.id]  || []
-                const elapsed   = Math.max(0,Math.floor((new Date()-new Date(goal.start_date))/86400000))
-                const qs = goalLogs.length ? Math.round(goalLogs.reduce((s,l)=>s+(l.quality==='good'?100:l.quality==='mid'?60:30),0)/goalLogs.length) : 0
+                const goalLogs = archivedLogs[goal.id] || []
+                const elapsed  = Math.max(0, Math.floor((new Date() - new Date(goal.start_date)) / 86400000))
+                const qs = goalLogs.length ? Math.round(goalLogs.reduce((s,l) => s + (l.quality==='good'?100:l.quality==='mid'?60:30), 0) / goalLogs.length) : 0
                 return (
-                  <div key={goal.id} onClick={()=>setArchiveTab(goal.id)} style={{ display:'flex',alignItems:'center',gap:10,padding:'12px 0',borderBottom:'1.5px solid var(--border)',cursor:'pointer' }}>
-                    <div style={{ width:40,height:40,borderRadius:12,background:'var(--surface2)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0 }}>📦</div>
-                    <div style={{ flex:1,minWidth:0 }}>
-                      <div style={{ fontSize:13,fontWeight:600,color:'var(--text)',marginBottom:2 }}>{goal.name}</div>
-                      <div style={{ fontSize:11,color:'var(--text3)' }}>{elapsed} gün · {goalLogs.length} log · Kalite {qs}%</div>
+                  <div key={goal.id} onClick={() => setArchiveTab(goal.id)} style={{ display:'flex', alignItems:'center', gap:10, padding:'12px 0', borderBottom:'1.5px solid var(--border)', cursor:'pointer' }}>
+                    <div style={{ width:40, height:40, borderRadius:12, background:'var(--surface2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>📦</div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', marginBottom:2, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{goal.name}</div>
+                      <div style={{ fontSize:11, color:'var(--text3)' }}>{elapsed} gün · {goalLogs.length} log · Kalite {qs}%</div>
                     </div>
-                    <span style={{ color:'var(--text3)',fontSize:14 }}>›</span>
+                    <span style={{ color:'var(--text3)', fontSize:16, flexShrink:0 }}>›</span>
                   </div>
                 )
               })
@@ -468,7 +462,7 @@ export default function ProfilePanel({ user, onClose, onOpenSharedGoal, onSignOu
         )}
       </div>
 
-      {chatFriend && <ChatPanel user={user} friend={chatFriend} onClose={()=>setChatFriend(null)} />}
+      {chatFriend && <ChatPanel user={user} friend={chatFriend} onClose={() => setChatFriend(null)} />}
     </>
   )
 }
