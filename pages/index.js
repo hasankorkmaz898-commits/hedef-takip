@@ -275,6 +275,7 @@ export default function Home() {
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [expandedGoal,   setExpandedGoal]   = useState(null)
   const [showProPlan,    setShowProPlan]    = useState(false)
+  const [showArchive,    setShowArchive]    = useState(false)
   const [checkinGoal,    setCheckinGoal]    = useState(null) 
   const [milestoneData,  setMilestoneData]  = useState(null) 
 
@@ -389,6 +390,18 @@ export default function Home() {
     const link = `${window.location.origin}/share/${templateId}`
     await navigator.clipboard.writeText(link)
     showToast('🔗 Link kopyalandı!')
+  }
+
+  async function archiveGoal(goalId) {
+    await supabase.from('goals').update({ is_archived: true }).eq('id', goalId)
+    setGoals(p => p.map(g => g.id===goalId ? {...g, is_archived:true} : g))
+    showToast('📦 Hedef arşive taşındı')
+  }
+
+  async function unarchiveGoal(goalId) {
+    await supabase.from('goals').update({ is_archived: false }).eq('id', goalId)
+    setGoals(p => p.map(g => g.id===goalId ? {...g, is_archived:false} : g))
+    showToast('✅ Hedef arşivden çıkarıldı')
   }
 
   async function handleDeleteGoal(goalId) {
@@ -548,7 +561,7 @@ export default function Home() {
               <div style={{ fontSize:14, marginBottom:20 }}>Aşağıdaki butona basarak başla</div>
               <button onClick={()=>setShowOnboarding(true)} style={{ padding:'9px 18px', background:'transparent', border:'1.5px solid var(--border)', borderRadius:99, color:'var(--text3)', fontSize:13, cursor:'pointer', fontFamily:'inherit' }}>? Nasıl çalışır</button>
             </div>
-          ) : goals.map(goal => (
+          ) : goals.filter(g => !g.is_archived).map(goal => (
             <GoalCard
               key={goal.id}
               goal={goal}
@@ -571,6 +584,7 @@ export default function Home() {
               onDelete={() => handleDeleteGoal(goal.id)}
               onReorderTasks={(from,to) => reorderTasks(goal.id, from, to)}
               onShare={() => shareGoal(goal.id)}
+              onArchive={() => archiveGoal(goal.id)}
               onWeekClose={goal.is_professional ? (weekNum, weekName, stats) => {
                 setCheckinGoal({ goal, weekNum, weekName, stats })
               } : null}
@@ -672,6 +686,10 @@ export default function Home() {
       {showProfile && (
         <ProfilePanel
           user={user}
+          archivedGoals={goals.filter(g=>g.is_archived)}
+          archivedTasks={tasks}
+          archivedLogs={logs}
+          onUnarchive={unarchiveGoal}
           onClose={() => setShowProfile(false)}
           onSignOut={signOut}
           onOpenSharedGoal={(friend) => { setSharedFriend(friend); setMainTab('shared') }}
@@ -743,7 +761,7 @@ function GoogleIcon() {
 }
 
 /* ─── Goal Card ──────────────────────────────────────────────────────────── */
-function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabChange, onToggleHist, onToggleTask, onSetQuality, onRemoveLog, onSaveNote, onNoteChange, onEdit, onDelete, isOpen, onToggleOpen, onReorderTasks, onShare, onWeekClose, onSkipTask, onUnskipTask, onEndTask, onRestoreTask, onTransferTask }) {
+function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabChange, onToggleHist, onToggleTask, onSetQuality, onRemoveLog, onSaveNote, onNoteChange, onEdit, onDelete, isOpen, onToggleOpen, onReorderTasks, onShare, onArchive, onWeekClose, onSkipTask, onUnskipTask, onEndTask, onRestoreTask, onTransferTask }) {
   const today    = todayStr()
   const dragIdx     = useRef(null)
   const dragOverIdx = useRef(null)
@@ -834,6 +852,9 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
             <span style={{ fontSize:11, color:doneTodayCount===tasks.length&&tasks.length>0?'var(--good)':'var(--text3)' }}>{doneTodayCount}/{tasks.length}</span>
             <button style={{ ...css.iconBtn, width:28, height:28, display:'flex', alignItems:'center', justifyContent:'center' }} onClick={e=>{e.stopPropagation();onShare()}} title="Paylaş">
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="13" cy="2.5" r="1.8" stroke="currentColor" strokeWidth="1.4"/><circle cx="13" cy="13.5" r="1.8" stroke="currentColor" strokeWidth="1.4"/><circle cx="3" cy="8" r="1.8" stroke="currentColor" strokeWidth="1.4"/><line x1="4.7" y1="7.1" x2="11.3" y2="3.4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/><line x1="4.7" y1="8.9" x2="11.3" y2="12.6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/></svg>
+            </button>
+            <button style={{ ...css.iconBtn, width:28, height:28, display:'flex', alignItems:'center', justifyContent:'center' }} onClick={e=>{e.stopPropagation();onArchive&&onArchive()}} title="Arşive taşı">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="1" y="2.5" width="14" height="3.5" rx="1" stroke="currentColor" strokeWidth="1.4"/><path d="M2.5 6v7a1 1 0 001 1h9a1 1 0 001-1V6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/><path d="M6 9.5h4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>
             </button>
             <button style={{ ...css.iconBtn, width:28, height:28, fontSize:12 }} onClick={e=>{e.stopPropagation();onEdit()}}>✎</button>
             <button style={{ ...css.iconBtn, width:28, height:28, fontSize:12, color:'var(--bad)' }} onClick={e=>{e.stopPropagation();onDelete()}}>✕</button>
