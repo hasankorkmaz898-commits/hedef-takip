@@ -1018,29 +1018,31 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                 <NoteSection goalId={goal.id} ds={today} notes={notes} noteInputs={noteInputs} onNoteChange={onNoteChange} onSaveNote={onSaveNote} />
 
                 {(() => {
-                  const goodCnt = logs.filter(l=>l.quality==='good').length
-                  const midCnt  = logs.filter(l=>l.quality==='mid').length
-                  const badCnt  = logs.filter(l=>l.quality==='bad').length
-                  // Yapılmayan: tüm geçen aktif gün-görev çiftleri - yapılanlar
+                  // Sadece bugün öncesi geçmiş günleri hesapla
+                  const pastLogs = logs.filter(l => l.log_date < today)
+                  const goodCnt  = pastLogs.filter(l=>l.quality==='good').length
+                  const midCnt   = pastLogs.filter(l=>l.quality==='mid').length
+                  const badCnt   = pastLogs.filter(l=>l.quality==='bad').length
+                  const doneCnt  = goodCnt + midCnt + badCnt
+                  // Geçmiş günlerdeki toplam aktif görev slotu (bugün hariç)
                   const elapsed2 = daysElapsed(goal.start_date)
                   let totalActiveSlots = 0
                   for (let i=0;i<elapsed2;i++) {
                     const ds2 = addDays(goal.start_date,i)
-                    const act = activeTasks(tasks,ds2)
-                    totalActiveSlots += act.length
+                    if (ds2 >= today) continue  // bugünü ve sonrasını atla
+                    totalActiveSlots += activeTasks(tasks,ds2).length
                   }
-                  const doneCnt    = goodCnt + midCnt + badCnt
-                  const missedCnt  = Math.max(0, totalActiveSlots - doneCnt)
+                  const missedCnt = Math.max(0, totalActiveSlots - doneCnt)
                   return (
                     <div style={{ marginTop:16 }}>
-                      <div style={{ ...css.label, marginBottom:8 }}>Toplam Kalite Dağılımı</div>
+                      <div style={{ ...css.label, marginBottom:8 }}>Geçmiş Gün Özeti</div>
                       <div style={{ display:'flex', flexWrap:'wrap', gap:10, fontSize:13, marginBottom:8 }}>
                         <span style={{ color:'var(--good)' }}>✓ İyi: {goodCnt}</span>
                         <span style={{ color:'var(--mid)' }}>− Orta: {midCnt}</span>
                         <span style={{ color:'var(--bad)' }}>✕ Kötü: {badCnt}</span>
                         <span style={{ color:'var(--text3)' }}>○ Yapılmadı: {missedCnt}</span>
                       </div>
-                      <QBar logs={logs} missed={missedCnt} total={totalActiveSlots} />
+                      <QBar logs={pastLogs} missed={missedCnt} total={totalActiveSlots} />
                     </div>
                   )
                 })()}
@@ -1288,13 +1290,15 @@ function AnalyticsPanel({ goals, tasks, logs }) {
     const worstDow = dowAvg.reduce((wi,v,i)=>v!==null&&(dowAvg[wi]===null||v<dowAvg[wi])?i:wi, 0)
 
     const taskStats = gt.map(t=>{
-      const tLogs = gl.filter(l=>l.task_id===t.id)
+      // Sadece geçmiş günler (bugün hariç)
+      const tLogs = gl.filter(l=>l.task_id===t.id && l.log_date < today)
       let activeCnt=0, doneCnt=0
       for (let i=0;i<e;i++) {
         const ds=addDays(goal.start_date,i)
+        if (ds >= today) continue  // bugünü ve sonrasını atla
         if (!taskActiveOnDay(t,ds)) continue
         activeCnt++
-        if (tLogs.find(l=>l.log_date===ds)) doneCnt++
+        if (tLogs.find(l=>String(l.log_date).slice(0,10)===ds)) doneCnt++
       }
       const rate = activeCnt ? Math.round(doneCnt/activeCnt*100) : 0
       const qAvg = tLogs.length ? Math.round(tLogs.reduce((s,l)=>s+(l.quality==='good'?100:l.quality==='mid'?60:30),0)/tLogs.length) : 0
