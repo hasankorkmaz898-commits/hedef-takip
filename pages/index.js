@@ -1019,22 +1019,30 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
 
                 {(() => {
                   // Sadece bugün öncesi geçmiş günleri hesapla
-                  // Sonlandırılmış ve buffer görevleri hariç tut
-                  const activeTaskIds = new Set(tasks.filter(t=>!t.ended_at&&!t.is_buffer).map(t=>t.id))
-                  const pastLogs = logs.filter(l => l.log_date < today && activeTaskIds.has(l.task_id))
+                  // Buffer görevleri hariç tut, sonlandırılmışları ended_at öncesi dahil et
+                  const pastLogs = logs.filter(l => {
+                    if (l.log_date >= today) return false
+                    const t = tasks.find(x => x.id === l.task_id)
+                    if (!t || t.is_buffer) return false
+                    return true
+                  })
                   const goodCnt  = pastLogs.filter(l=>l.quality==='good').length
                   const midCnt   = pastLogs.filter(l=>l.quality==='mid').length
                   const badCnt   = pastLogs.filter(l=>l.quality==='bad').length
                   const doneCnt  = goodCnt + midCnt + badCnt
                   // Geçmiş günlerdeki toplam aktif görev slotu (bugün hariç)
                   const elapsed2 = daysElapsed(goal.start_date)
-                  // Sonlandırılmış görevleri tamamen dışla
-                  const activePastTasks = tasks.filter(t => !t.ended_at && !t.is_buffer)
                   let totalActiveSlots = 0
                   for (let i=0;i<elapsed2;i++) {
                     const ds2 = addDays(goal.start_date,i)
                     if (ds2 >= today) continue
-                    totalActiveSlots += activeTasks(activePastTasks, ds2).length
+                    // Buffer hariç, sonlandırılmışlar ended_at'e kadar sayılır
+                    const slotTasks = tasks.filter(t => {
+                      if (t.is_buffer) return false
+                      if (t.ended_at && ds2 >= t.ended_at) return false
+                      return taskActiveOnDay(t, ds2)
+                    })
+                    totalActiveSlots += slotTasks.length
                   }
                   const missedCnt = Math.max(0, totalActiveSlots - doneCnt)
                   return (
@@ -1293,13 +1301,15 @@ function AnalyticsPanel({ goals, tasks, logs }) {
     const bestDow  = dowAvg.reduce((bi,v,i)=>v!==null&&(dowAvg[bi]===null||v>dowAvg[bi])?i:bi, 0)
     const worstDow = dowAvg.reduce((wi,v,i)=>v!==null&&(dowAvg[wi]===null||v<dowAvg[wi])?i:wi, 0)
 
-    const taskStats = gt.filter(t => !t.ended_at && !t.is_buffer).map(t=>{
+    const taskStats = gt.filter(t => !t.is_buffer).map(t=>{
       // Sadece geçmiş günler (bugün hariç)
       const tLogs = gl.filter(l=>l.task_id===t.id && l.log_date < today)
       let activeCnt=0, doneCnt=0
       for (let i=0;i<e;i++) {
         const ds=addDays(goal.start_date,i)
         if (ds >= today) continue
+        // Sonlandırılmışlar: ended_at tarihinden sonraki günleri sayma
+        if (t.ended_at && ds >= t.ended_at) continue
         if (!taskActiveOnDay(t,ds)) continue
         activeCnt++
         if (tLogs.find(l=>String(l.log_date).slice(0,10)===ds)) doneCnt++
