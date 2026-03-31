@@ -1018,33 +1018,52 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                 <NoteSection goalId={goal.id} ds={today} notes={notes} noteInputs={noteInputs} onNoteChange={onNoteChange} onSaveNote={onSaveNote} />
 
                 {(() => {
-                  // Sadece bugün öncesi geçmiş günleri hesapla
-                  // Buffer görevleri hariç tut, sonlandırılmışları ended_at öncesi dahil et
-                  const pastLogs = logs.filter(l => {
-                    if (l.log_date >= today) return false
-                    const t = tasks.find(x => x.id === l.task_id)
-                    if (!t || t.is_buffer) return false
-                    return true
+                  // Her görev için kendi başlangıç gününden itibaren hesapla
+                  // Sonlandırılmış görevler ended_at'e kadar, buffer görevler hiç sayılmaz
+                  let goodCnt=0, midCnt=0, badCnt=0, missedCnt=0
+
+                  tasks.filter(t => !t.is_buffer).forEach(t => {
+                    // Bu görevin başlangıç tarihi: görev oluşturma tarihi veya hedef başlangıcı
+                    const taskStart = t.created_at
+                      ? new Date(t.created_at).toISOString().slice(0,10)
+                      : goal.start_date
+                    const realStart = taskStart > goal.start_date ? taskStart : goal.start_date
+                    // Bu görevin bitiş tarihi: sonlandırma tarihi veya bugün
+                    const taskEnd = t.ended_at ? t.ended_at : today
+
+                    const tLogs = logs.filter(l => l.task_id === t.id && l.log_date < today)
+
+                    // Hedef başlangıcından bugüne kadar her gün kontrol et
+                    const dayCount = Math.max(0, Math.floor((new Date(today) - new Date(realStart)) / 86400000))
+                    for (let i=0; i<dayCount; i++) {
+                      const ds2 = addDays(realStart, i)
+                      if (ds2 >= today) continue    // bugünü sayma
+                      if (ds2 >= taskEnd) continue  // sonlandırma sonrasını sayma
+
+                      // O gün bu görev aktif miydi?
+                      const dow = new Date(ds2+'T00:00:00').getDay()
+                      const isActiveDay = !t.active_days?.length || t.active_days.includes(dow)
+                      if (!isActiveDay) continue
+                      if (t.skipped_dates?.map(String).includes(ds2)) continue
+
+                      // Log var mı?
+                      const log = tLogs.find(l => String(l.log_date).slice(0,10) === ds2)
+                      if (log) {
+                        if (log.quality === 'good') goodCnt++
+                        else if (log.quality === 'mid') midCnt++
+                        else badCnt++
+                      } else {
+                        missedCnt++
+                      }
+                    }
                   })
-                  const goodCnt  = pastLogs.filter(l=>l.quality==='good').length
-                  const midCnt   = pastLogs.filter(l=>l.quality==='mid').length
-                  const badCnt   = pastLogs.filter(l=>l.quality==='bad').length
-                  const doneCnt  = goodCnt + midCnt + badCnt
-                  // Geçmiş günlerdeki toplam aktif görev slotu (bugün hariç)
-                  const elapsed2 = daysElapsed(goal.start_date)
-                  let totalActiveSlots = 0
-                  for (let i=0;i<elapsed2;i++) {
-                    const ds2 = addDays(goal.start_date,i)
-                    if (ds2 >= today) continue
-                    // Buffer hariç, sonlandırılmışlar ended_at'e kadar sayılır
-                    const slotTasks = tasks.filter(t => {
-                      if (t.is_buffer) return false
-                      if (t.ended_at && ds2 >= t.ended_at) return false
-                      return taskActiveOnDay(t, ds2)
-                    })
-                    totalActiveSlots += slotTasks.length
-                  }
-                  const missedCnt = Math.max(0, totalActiveSlots - doneCnt)
+
+                  const totalCnt = goodCnt + midCnt + badCnt + missedCnt
+                  const fakeLogs = [
+                    ...Array(goodCnt).fill({quality:'good'}),
+                    ...Array(midCnt).fill({quality:'mid'}),
+                    ...Array(badCnt).fill({quality:'bad'}),
+                  ]
                   return (
                     <div style={{ marginTop:16 }}>
                       <div style={{ ...css.label, marginBottom:8 }}>Geçmiş Gün Özeti</div>
@@ -1052,9 +1071,9 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
                         <span style={{ color:'var(--good)' }}>✓ İyi: {goodCnt}</span>
                         <span style={{ color:'var(--mid)' }}>− Orta: {midCnt}</span>
                         <span style={{ color:'var(--bad)' }}>✕ Kötü: {badCnt}</span>
-                        <span style={{ color:'var(--text3)' }}>○ Yapılmadı: {missedCnt}</span>
+                        {missedCnt > 0 && <span style={{ color:'var(--text3)' }}>○ Yapılmadı: {missedCnt}</span>}
                       </div>
-                      <QBar logs={pastLogs} missed={missedCnt} total={totalActiveSlots} />
+                      {totalCnt > 0 && <QBar logs={fakeLogs} missed={missedCnt} total={totalCnt} />}
                     </div>
                   )
                 })()}
