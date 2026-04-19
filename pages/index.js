@@ -392,6 +392,15 @@ export default function Home() {
     showToast('🔗 Link kopyalandı!')
   }
 
+  async function extendGoal(goalId, extraDays) {
+    const goal = goals.find(g=>g.id===goalId)
+    if (!goal) return
+    const newTotal = goal.total_days + extraDays
+    await supabase.from('goals').update({ total_days: newTotal }).eq('id', goalId)
+    setGoals(p => p.map(g => g.id===goalId ? {...g, total_days: newTotal} : g))
+    showToast(`📅 Hedef ${extraDays} gün uzatıldı`)
+  }
+
   async function archiveGoal(goalId) {
     await supabase.from('goals').update({ is_archived: true }).eq('id', goalId)
     setGoals(p => p.map(g => g.id===goalId ? {...g, is_archived:true} : g))
@@ -585,6 +594,7 @@ export default function Home() {
               onReorderTasks={(from,to) => reorderTasks(goal.id, from, to)}
               onShare={() => shareGoal(goal.id)}
               onArchive={() => archiveGoal(goal.id)}
+              onExtend={(days) => extendGoal(goal.id, days)}
               onWeekClose={goal.is_professional ? (weekNum, weekName, stats) => {
                 setCheckinGoal({ goal, weekNum, weekName, stats })
               } : null}
@@ -761,7 +771,7 @@ function GoogleIcon() {
 }
 
 /* ─── Goal Card ──────────────────────────────────────────────────────────── */
-function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabChange, onToggleHist, onToggleTask, onSetQuality, onRemoveLog, onSaveNote, onNoteChange, onEdit, onDelete, isOpen, onToggleOpen, onReorderTasks, onShare, onArchive, onWeekClose, onSkipTask, onUnskipTask, onEndTask, onRestoreTask, onTransferTask }) {
+function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabChange, onToggleHist, onToggleTask, onSetQuality, onRemoveLog, onSaveNote, onNoteChange, onEdit, onDelete, isOpen, onToggleOpen, onReorderTasks, onShare, onArchive, onExtend, onWeekClose, onSkipTask, onUnskipTask, onEndTask, onRestoreTask, onTransferTask }) {
   const today    = todayStr()
   const dragIdx     = useRef(null)
   const dragOverIdx = useRef(null)
@@ -914,14 +924,19 @@ function GoalCard({ goal, tasks, logs, notes, tab, openHist, noteInputs, onTabCh
 
             {tab==='tasks' && (
               <div className="anim-tab">
-                {isPro && (() => {
-                  const allWeekNums = [...new Set(tasks.map(t=>t.week_number).filter(Boolean))].sort((a,b)=>a-b)
-                  const maxWeeks    = allWeekNums.length
-                  const [proWeekTab, setProWeekTab] = [currentWeekNum, ()=>{}]
-                  return null
-                })()}
 
-                {isPro ? (
+                {/* Hedef tamamlandı / süresi doldu banner */}
+                {remaining === 0 && !isPro && (
+                  <GoalCompletionBanner
+                    goal={goal}
+                    tasks={tasks}
+                    logs={logs}
+                    onArchive={onArchive}
+                    onExtend={onExtend}
+                  />
+                )}
+
+                {remaining === 0 && !isPro ? null : isPro ? (
                   <ProWeekView
                     tasks={tasks}
                     logs={logs}
@@ -1749,6 +1764,124 @@ function HeatmapCalendar({ tasks, logs, startDate, totalDays }) {
   )
 }
 
+
+/* ─── Goal Completion Banner ─────────────────────────────────────────────── */
+function GoalCompletionBanner({ goal, tasks, logs, onArchive, onExtend, onContinue }) {
+  const [mode, setMode] = useState(null) // null | 'extend' | 'custom'
+
+  const e    = daysElapsed(goal.start_date)
+  const op   = overallScore(tasks, logs, goal.start_date, goal.total_days)
+  const allSc = []
+  for (let i=0;i<e;i++) {
+    const sc = dayScore(tasks, logs, addDays(goal.start_date, i))
+    if (sc >= 0) allSc.push(sc)
+  }
+  const globalAvg   = allSc.length ? allSc.reduce((s,x)=>s+x,0)/allSc.length : 0
+  const last7Avg    = allSc.slice(-7).length ? allSc.slice(-7).reduce((s,x)=>s+x,0)/allSc.slice(-7).length : globalAvg
+  const effRate     = (globalAvg*0.3)+(last7Avg*0.7)
+  const activeRatio = e > 0 ? allSc.length/e : 1
+  const expectedTotal = Math.max(allSc.length, goal.total_days*activeRatio)
+  const ratePerDay  = expectedTotal > 0 ? (activeRatio*effRate)/expectedTotal : 0
+  const diffR       = ratePerDay > 0 ? Math.max(1, Math.ceil((1-op)/ratePerDay)) : 0
+  const isComplete  = op >= 0.98
+  const completePct = Math.round(op*100)
+
+  if (isComplete) return (
+    <div style={{ background:'rgba(74,222,128,0.08)', border:'1.5px solid rgba(74,222,128,0.3)', borderRadius:16, padding:16, marginBottom:14 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
+        <span style={{ fontSize:28 }}>🎉</span>
+        <div>
+          <div style={{ fontSize:14, fontWeight:800, color:'var(--good)' }}>Hedef Tamamlandı!</div>
+          <div style={{ fontSize:11, color:'var(--text3)', marginTop:1 }}>{goal.total_days} gün boyunca harika iş çıkardın</div>
+        </div>
+      </div>
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        <button onClick={onArchive} style={optBtn('good')}>📦 Sonlandır ve Arşive Taşı</button>
+        <button onClick={()=>setMode(m=>m==='extend'?null:'extend')} style={optBtn('neutral')}>🔄 Devam Et</button>
+        {mode==='extend' && <ExtendPicker onExtend={(d)=>{onExtend&&onExtend(d);setMode(null)}} />}
+      </div>
+    </div>
+  )
+
+  return (
+    <div style={{ background:'rgba(251,191,36,0.07)', border:'1.5px solid rgba(251,191,36,0.35)', borderRadius:16, padding:16, marginBottom:14 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14 }}>
+        <span style={{ fontSize:24 }}>⏰</span>
+        <div>
+          <div style={{ fontSize:14, fontWeight:800, color:'var(--mid)' }}>Süre Doldu</div>
+          <div style={{ fontSize:11, color:'var(--text3)', marginTop:2 }}>
+            {goal.total_days} günlük süre bitti · %{completePct} tamamlandı
+          </div>
+        </div>
+      </div>
+
+      <div style={{ fontSize:11, color:'var(--text3)', marginBottom:10, fontWeight:600, textTransform:'uppercase', letterSpacing:'.06em' }}>
+        Ne yapmak istersin?
+      </div>
+
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        {/* Seçenek 1: Analiz önerisi */}
+        {diffR > 0 && (
+          <button
+            onClick={()=>{ onExtend&&onExtend(diffR) }}
+            style={optBtn('accent')}
+          >
+            <div>
+              <div style={{ fontWeight:700 }}>📊 {diffR} Gün Ekle ve Tamamla</div>
+              <div style={{ fontSize:10, opacity:.8, marginTop:2 }}>Analiz bazlı öneri — eksik günleri telafi et</div>
+            </div>
+          </button>
+        )}
+
+        {/* Seçenek 2: Manuel devam et */}
+        <button
+          onClick={()=>setMode(m=>m==='extend'?null:'extend')}
+          style={optBtn('neutral')}
+        >
+          <div>
+            <div style={{ fontWeight:700 }}>🔄 Devam Et</div>
+            <div style={{ fontSize:10, opacity:.8, marginTop:2 }}>Gün sayısı seç ve süreyi uzat</div>
+          </div>
+        </button>
+        {mode==='extend' && <ExtendPicker onExtend={(d)=>{onExtend&&onExtend(d);setMode(null)}} />}
+
+        {/* Seçenek 3: Sonlandır */}
+        <button
+          onClick={onArchive}
+          style={optBtn('end')}
+        >
+          <div>
+            <div style={{ fontWeight:700 }}>📦 Sonlandır ve Arşive Taşı</div>
+            <div style={{ fontSize:10, opacity:.8, marginTop:2 }}>Geçmiş kayıtlar korunur</div>
+          </div>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+const optBtn = (type) => ({
+  width:'100%', padding:'11px 14px', borderRadius:12, cursor:'pointer',
+  fontFamily:'inherit', fontSize:13, textAlign:'left', display:'block',
+  background: type==='accent'?'rgba(124,111,247,0.12)':type==='good'?'rgba(74,222,128,0.12)':type==='end'?'rgba(248,113,113,0.08)':'var(--surface2)',
+  border: `1.5px solid ${type==='accent'?'rgba(124,111,247,0.35)':type==='good'?'rgba(74,222,128,0.3)':type==='end'?'rgba(248,113,113,0.25)':'var(--border)'}`,
+  color: type==='accent'?'var(--accent)':type==='good'?'var(--good)':type==='end'?'var(--bad)':'var(--text2)',
+})
+
+function ExtendPicker({ onExtend }) {
+  const opts = [7, 14, 21, 30]
+  return (
+    <div style={{ display:'flex', gap:6, paddingTop:4 }}>
+      {opts.map(d => (
+        <button key={d} onClick={()=>onExtend(d)} style={{
+          flex:1, padding:'8px 4px', borderRadius:10, border:'1.5px solid var(--border)',
+          background:'var(--surface2)', color:'var(--text2)', fontSize:12, fontWeight:700,
+          cursor:'pointer', fontFamily:'inherit'
+        }}>+{d}g</button>
+      ))}
+    </div>
+  )
+}
 
 /* ─── Pro Week View ──────────────────────────────────────────────────────── */
 function ProWeekView({ tasks, logs, todayLogs, today, goal, currentWeekNum, onToggleTask, onSetQuality, onSkipTask, onUnskipTask, onEndTask, onRestoreTask, openMenuId, setOpenMenuId, onWeekClose, onTransferTask }) {
