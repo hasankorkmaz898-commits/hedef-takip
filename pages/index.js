@@ -2188,8 +2188,14 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
   const [name,     setName]     = useState(goal?.name||'')
   const [days,     setDays]     = useState(goal?.total_days||'')
   const initTasks = tasks.length
-    ? tasks.map((t,i) => ({ id:t.id, name:t.name, active_days:t.active_days||[], difficulty:t.difficulty||1, _key:i }))
-    : [{ name:'', active_days:[], _key:0 }]
+    ? tasks.map((t,i) => ({
+        id:          t.id,
+        name:        t.name        || '',
+        active_days: t.active_days || [],
+        difficulty:  Number(t.difficulty) >= 1 ? Number(t.difficulty) : 1,
+        _key:        i
+      }))
+    : [{ name:'', active_days:[], difficulty:1, _key:0 }]
   const [taskList, setTaskList] = useState(initTasks)
   const [dayPicker, setDayPicker] = useState(null)
   const [showTemplates, setShowTemplates] = useState(!goal)
