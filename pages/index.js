@@ -2229,7 +2229,7 @@ function GoalModal({ goal, tasks, onSave, onClose }) {
   function handleSave() {
     const filtered = taskList.filter(t=>t.name.trim())
     if (!name.trim()||!days||!filtered.length) { alert('Lütfen tüm alanları doldur.'); return }
-    onSave(name.trim(), parseInt(days), filtered.map(t=>({ id:t.id, name:t.name.trim(), active_days:t.active_days })))
+    onSave(name.trim(), parseInt(days), filtered.map(t=>({ id:t.id, name:t.name.trim(), active_days:t.active_days, difficulty:Number(t.difficulty)||1 })))
   }
 
   return (
